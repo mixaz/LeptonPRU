@@ -34,12 +34,12 @@ sudo apt-get install ti-pru-cgt-installer
 
 Compile PRU firmware, run in LeptonPRU/firmware folder:
 ```
-make
+PRU_CGT=/usr/share/ti/cgt-pru make
 ```
 
-copy release/lepton-pru0-fw and release/lepton-pru1-fw to /lib/firmware/ or just run
+copy release/lepton-pru0.out and release/lepton-pru1.out to /lib/firmware/lepton-pru0-fw and /lib/firmware/lepton-pru1-fw or just run
 ```
-sudo make install
+sudo su -c "PRU_CGT=/usr/share/ti/cgt-pru make install"
 ```
 
 ### Building kernel module
