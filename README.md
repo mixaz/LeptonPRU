@@ -195,6 +195,8 @@ Telemetry is not supported.
 
 ### Links
 
+* [FLIR Lepton Engineering Datasheet](docs/flir-lepton-engineering-datasheet.pdf)
+* [FLIR Lepton 2 vs Lepton 3](docs/lepton-vs-lepton-3-app-note.pdf)
 * [BeagleLogic at github](https://github.com/abhishek-kakkar/BeagleLogic)
 * [Ti AM33XX PRUSSv2 on eLinux.org](https://elinux.org/Ti_AM33XX_PRUSSv2)
 * [PRU Cookbook](https://markayoder.github.io/PRUCookbook/)
@@ -205,5 +207,5 @@ Telemetry is not supported.
 * [QT4 cross-compiling for BBB](https://github.com/yongli-aus/qt-4.8.6-cross-compile-for-beaglebone-black)
 * [Beagleboard:Expanding File System Partition On A microSD](https://elinux.org/Beagleboard:Expanding_File_System_Partition_On_A_microSD)
 * [Using Device Trees To Configure PRU IO Pins](http://www.ofitselfso.com/BeagleNotes/UsingDeviceTreesToConfigurePRUIOPins.php)
-* [Simple MMAP implememntation in Linux driver](https://stackoverflow.com/a/45645732/1028256)
+* [Simple MMAP implementation for Linux driver](https://stackoverflow.com/a/45645732/1028256)
 
