@@ -69,11 +69,11 @@ Copy leptonpru-00A0.dtbo to /lib/firmware/:
 sudo make deploy_overlay
 ```
 
-Modify uEnv.txt to load leptonpru-00A0.dtbo on bootup, add following like to /boot/uEnv.txt:
+Modify uEnv.txt to load leptonpru-00A0.dtbo on bootup, add following line to /boot/uEnv.txt:
 ```
 uboot_overlay_pru=/lib/firmware/leptonpru-00A0.dtbo
 ```
-It shall replace BL cape. If using other BBB image, you may need to enable uboot oiverlays as well:
+It shall replace BL cape. If using other BBB image, you may need to enable uboot overlays as well:
 ```
 enable_uboot_overlays=1
 ```
@@ -93,7 +93,7 @@ Connect the Lepton module to BBB, currently the pins are hardcoded to
 #define CS	2	//P9_30
 ```
 
-Configure the pins, run in /LeptonPRU/kernel:
+Configure the pins, run in LeptonPRU/kernel:
 ```
 ./pincfg.sh
 ```
@@ -197,10 +197,10 @@ Telemetry is not supported.
 
 * [FLIR Lepton Engineering Datasheet](docs/flir-lepton-engineering-datasheet.pdf)
 * [FLIR Lepton 2 vs Lepton 3](docs/lepton-vs-lepton-3-app-note.pdf)
+* [BeagleLogic: Building a logic analyzer with the PRUs](http://theembeddedkitchen.net/beaglelogic-building-a-logic-analyzer-with-the-prus-part-1/449)
 * [BeagleLogic at github](https://github.com/abhishek-kakkar/BeagleLogic)
 * [Ti AM33XX PRUSSv2 on eLinux.org](https://elinux.org/Ti_AM33XX_PRUSSv2)
 * [PRU Cookbook](https://markayoder.github.io/PRUCookbook/)
-* [BeagleLogic: Building a logic analyzer with the PRUs](http://theembeddedkitchen.net/beaglelogic-building-a-logic-analyzer-with-the-prus-part-1/449)
 * [Beaglebone PRU shared memory in C](http://catch22.eu/beaglebone/beaglebone-pru-ipc/)
 * [SPI Master Controller on PRU](https://github.com/chanakya-vc/PRU-I2C_SPI_master/wiki/SPI-Master-Controller)
 * [PRU SPI driver on the BeagleBone](https://github.com/giuliomoro/bb-pru-spi-duplex)
