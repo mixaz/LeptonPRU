@@ -203,6 +203,7 @@ Telemetry is not supported.
 * [BeagleLogic: Building a logic analyzer with the PRUs](http://theembeddedkitchen.net/beaglelogic-building-a-logic-analyzer-with-the-prus-part-1/449)
 * [Beaglebone PRU shared memory in C](http://catch22.eu/beaglebone/beaglebone-pru-ipc/)
 * [SPI Master Controller on PRU](https://github.com/chanakya-vc/PRU-I2C_SPI_master/wiki/SPI-Master-Controller)
+* [PRU SPI driver on the BeagleBone](https://github.com/giuliomoro/bb-pru-spi-duplex)
 * [Beaglebone PRU DMA support](https://github.com/maciejjo/beaglebone-pru-dma)
 * [QT4 cross-compiling for BBB](https://github.com/yongli-aus/qt-4.8.6-cross-compile-for-beaglebone-black)
 * [Beagleboard:Expanding File System Partition On A microSD](https://elinux.org/Beagleboard:Expanding_File_System_Partition_On_A_microSD)
