@@ -21,7 +21,7 @@ sudo apt-get install build-essential
 ### Getting LeptonPRU source code
 
 ```
-git clone <TBD>/LeptonPRU
+git clone git@github.com:mixaz/LeptonPRU.git
 cd LeptonPRU
 ```
 
