@@ -209,9 +209,7 @@ static int read_frame(int buf_idx)
 			// out of sync - wrong packet number received. 
 			// a sync to discard packets shall be performed
 			if(packetNumber != j) {
-				// packetNumber = 0 - discarded frame
-				if(packetNumber != 0)
-					cxt.packets_mismatch++;
+				cxt.packets_mismatch++;
 				if(++wrong_packet >= WRONG_PACKETS_TO_RESYNC)
 					return -2;
 				j = 0;
@@ -228,8 +226,8 @@ static int read_frame(int buf_idx)
 				if(segmentNumber != i+1) {
 					// wrong segment received, read next one till needed segment.
 					// 2/3 frames are transmitted with segmentNumber = 0, shall be ignored.
-					// https://groups.google.com/d/msg/flir-lepton/tY5dQ7ytj3Y/HntB3LghHAAJ
-					cxt.segments_mismatch++;
+					if(packetNumber != 0)
+						cxt.segments_mismatch++;
 					wrong_segment++;	// read segment till the end then dismiss it
 				}
 				else {

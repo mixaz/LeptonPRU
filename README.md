@@ -147,7 +147,7 @@ To build the example you'll need qt4 SDK:
 sudo apt-get install qt4-dev-tools
 ```
 
-Compile QT example (modified version of an example from FLIR Lepton SDK, for RaspberryPI) n LeptonPRU/raspberrypi_video_Lepton3 folder:
+Compile QT example (modified version of an example from FLIR Lepton SDK, for RaspberryPI) in LeptonPRU/raspberrypi_video_Lepton3 folder:
 ```
 qmake
 make
