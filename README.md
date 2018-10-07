@@ -12,7 +12,7 @@ SPI bit-banging and Lepton VoSPI protocol handling, to not waste main ARM CPU re
 
 Install [BeagleLogic debian image](https://beaglelogic.readthedocs.io/en/latest/beaglelogic_system_image.html) with linux kernel 4.9. We will build on BBB, without cross-compiling.
 
-You may need to install build tools nsuch as git and GCC, seems that they go with BL image by default.
+You may need to install build tools such as git and GCC, seems that they go with BL image by default.
 
 ```
 sudo apt-get install build-essential
@@ -64,7 +64,7 @@ Now compile leptonpru-00A0.dtbo:
 make overlay
 ```
 
-Copy   to /lib/firmware/:
+Copy leptonpru-00A0.dtbo to /lib/firmware/:
 ```
 sudo make deploy_overlay
 ```
@@ -86,7 +86,7 @@ sudo shutdown now
 
 ## Testing LeptonPRU driver
 
-Connect the Lepton module to BBB, currently the pins hardcoded to 
+Connect the Lepton module to BBB, currently the pins are hardcoded to 
 ```
 #define CLK	14	//P8_12
 #define MISO	5	//P9_27
@@ -136,7 +136,8 @@ It prints 10 frames from the module to stdout. The data is in Lepton VoSPI forma
 See the driver stats:
 ```
 $ cat /sys/devices/virtual/misc/leptonpru/state
-state: 1, queue:2, frames received: 13, dropped: 0, segments mismatch: 105, packets mismatch: 6000, resync: 1, discards found: 30, discard sync fails: 0
+state: 1, queue:2, frames received: 13, dropped: 0, segments mismatch: 105, 
+packets mismatch: 6000, resync: 1, discards found: 30, discard sync fails: 0
 ```
 
 ### Building QT example
@@ -151,7 +152,7 @@ Compile QT example (modified version of an example from FLIR Lepton SDK, for Ras
 qmake
 make
 ```
-You shall get . binary in the current folder
+You shall get raspberrypi_video binary in the current folder
 
 You need X11 installed to run the app, follow these instructions: [Add X11 to a BeagleBone IoT image](https://gist.github.com/jadonk/39d0fcfc323347d88e995cdfee02bdad)
 
@@ -167,7 +168,7 @@ See LeptonThread.cpp for code related to the driver usage.
 
 There're some Lepton tech specs in docs folder.
 
-Source code of this driver is based on [BeagleLogic](https://github.com/abhishek-kakkar/BeagleLogic). BL uses 2 PRU, we use only one. BL needs exact timings, while Lepton camera can deal with flixible SPI rates 2-20Mhz. Currently FW for the second PRU is also loaded but it does nothing, shall be removed.
+Source code of this driver is based on BeagleLogic. BL uses 2 PRU, we use only one. BL needs exact timings, while Lepton camera can deal with flixible SPI rates 2-20Mhz. Currently FW for the second PRU is also loaded but it does nothing, shall be removed.
 
 Frames are sent in VoSPI format - 4 segments for 160x120 image, see FLIR docs. See QT example
 how to convert it to an image (LeptonThread.cpp).
@@ -191,4 +192,18 @@ I2C pins are not used, the camera starts streaming to SPI by default, the driver
 Lepton packet CRC is not checked.
 
 Telemetry is not supported.
+
+### Links
+
+* [BeagleLogic at github](https://github.com/abhishek-kakkar/BeagleLogic)
+* [Ti AM33XX PRUSSv2 on eLinux.org](https://elinux.org/Ti_AM33XX_PRUSSv2)
+* [PRU Cookbook](https://markayoder.github.io/PRUCookbook/)
+* [BeagleLogic: Building a logic analyzer with the PRUs](http://theembeddedkitchen.net/beaglelogic-building-a-logic-analyzer-with-the-prus-part-1/449)
+* [Beaglebone PRU shared memory in C](http://catch22.eu/beaglebone/beaglebone-pru-ipc/)
+* [SPI Master Controller on PRU](https://github.com/chanakya-vc/PRU-I2C_SPI_master/wiki/SPI-Master-Controller)
+* [Beaglebone PRU DMA support](https://github.com/maciejjo/beaglebone-pru-dma)
+* [QT4 cross-compiling for BBB](https://github.com/yongli-aus/qt-4.8.6-cross-compile-for-beaglebone-black)
+* [Beagleboard:Expanding File System Partition On A microSD](https://elinux.org/Beagleboard:Expanding_File_System_Partition_On_A_microSD)
+* [Using Device Trees To Configure PRU IO Pins](http://www.ofitselfso.com/BeagleNotes/UsingDeviceTreesToConfigurePRUIOPins.php)
+* [Simple MMAP implememntation in Linux driver](https://stackoverflow.com/a/45645732/1028256)
 
