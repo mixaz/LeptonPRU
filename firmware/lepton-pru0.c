@@ -39,7 +39,7 @@
 /* max bits to wait for discard packet header (3 packets for now) */
 #define MAX_BITS_TO_DISCARD	(3*PACKETS_PER_FRAME*PACKET_SIZE_UINT16*16)
 #define MAX_TRIES_TO_SYNC 		5
-#define WRONG_SEGMENTS_TO_RESYNC 	8
+#define WRONG_SEGMENTS_TO_RESYNC 	20
 #define WRONG_PACKETS_TO_RESYNC 	(PACKETS_PER_SEGMENT*100)
 
 /* PRU/ARM shared memory */
@@ -64,9 +64,9 @@ static uint16_t spi_read16()
 		SET_PIN(CLK,0);
 		__delay_cycles(10);
 		SET_PIN(CLK,1);
-		__delay_cycles(2);
+		__delay_cycles(10);
 		
-		if (__R31 & (1 << MISO))
+		if (CHECK_PIN(MISO))
 			miso |= 0x01;
 		else
 			miso &= ~0x01;
@@ -108,10 +108,10 @@ static uint32_t wait_FFF_FFFF_0000(uint32_t maxBits) {
 	while((cnt1111 < 12+16 || cnt0000 < 16) && bits < maxBits) {
 		
 		SET_PIN(CLK,0);
-		__delay_cycles(20);
+		__delay_cycles(10);
 		
 		SET_PIN(CLK,1);
-		if (__R31 & (1 << MISO)) {
+		if (CHECK_PIN(MISO))
 			if(cnt0000) {
 				cnt1111 = 0;
 				cnt0000 = 0;
@@ -121,7 +121,7 @@ static uint32_t wait_FFF_FFFF_0000(uint32_t maxBits) {
 		else {
 			cnt0000++;
 		}
-		__delay_cycles(20);
+		__delay_cycles(10);
 		bits++;
 	}
 	if(bits >= maxBits)

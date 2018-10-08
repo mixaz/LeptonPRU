@@ -69,7 +69,7 @@ Copy leptonpru-00A0.dtbo to /lib/firmware/:
 sudo make deploy_overlay
 ```
 
-Modify uEnv.txt to load leptonpru-00A0.dtbo on bootup, add following line to /boot/uEnv.txt:
+Modify /boot/uEnv.txt to load leptonpru-00A0.dtbo on bootup, add following line to /boot/uEnv.txt:
 ```
 uboot_overlay_pru=/lib/firmware/leptonpru-00A0.dtbo
 ```
