@@ -226,7 +226,7 @@ static int read_frame(int buf_idx)
 				if(segmentNumber != i+1) {
 					// wrong segment received, read next one till needed segment.
 					// 2/3 frames are transmitted with segmentNumber = 0, shall be ignored.
-					if(packetNumber != 0)
+					if(segmentNumber != 0)
 						cxt.segments_mismatch++;
 					wrong_segment++;	// read segment till the end then dismiss it
 				}
