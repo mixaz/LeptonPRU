@@ -111,7 +111,7 @@ static uint32_t wait_FFF_FFFF_0000(uint32_t maxBits) {
 		__delay_cycles(10);
 		
 		SET_PIN(CLK,1);
-		if (CHECK_PIN(MISO))
+		if (CHECK_PIN(MISO)) {
 			if(cnt0000) {
 				cnt1111 = 0;
 				cnt0000 = 0;
