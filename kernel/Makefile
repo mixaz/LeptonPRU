@@ -6,6 +6,7 @@ KSRC ?= /lib/modules/$(shell uname -r)/build
 
 # Module targets (run from host)
 obj-m := leptonpru.o
+EXTRA_CFLAGS=-I$(PWD)/../include
 
 all:
 	@make -C $(KSRC) M=$(PWD) ARCH=arm CROSS_COMPILE=arm-linux-gnueabihf- modules

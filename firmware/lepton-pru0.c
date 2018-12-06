@@ -19,7 +19,7 @@
 #include <pru_cfg.h>
 #include "resource_table_0.h"
 
-#include "../include/lepton.h"
+#include "../include/leptonpru_int.h"
 
 //#define MOSI	15	//P8_11
 #define CLK	14	//P8_12
@@ -30,7 +30,7 @@
  * Define firmware version
  */
 #define MAJORVER	0
-#define MINORVER	1
+#define MINORVER	7
 
 #define SET_PIN(bit,high) 		if(high) __R30 |= (1 << (bit)); else __R30 &= ~(1 << (bit));
 #define INVERT_PIN(bit) 		__R30 ^= (1 << (bit));
@@ -39,7 +39,7 @@
 /* max bits to wait for discard packet header (3 packets for now) */
 #define MAX_BITS_TO_DISCARD	(3*PACKETS_PER_FRAME*PACKET_SIZE_UINT16*16)
 #define MAX_TRIES_TO_SYNC 		5
-#define WRONG_SEGMENTS_TO_RESYNC 	20
+#define WRONG_SEGMENTS_TO_RESYNC 	10
 #define WRONG_PACKETS_TO_RESYNC 	(PACKETS_PER_SEGMENT*100)
 
 /* PRU/ARM shared memory */
@@ -64,7 +64,7 @@ static uint16_t spi_read16()
 		SET_PIN(CLK,0);
 		__delay_cycles(10);
 		SET_PIN(CLK,1);
-		__delay_cycles(10);
+		__delay_cycles(2);
 		
 		if (CHECK_PIN(MISO))
 			miso |= 0x01;
@@ -108,7 +108,7 @@ static uint32_t wait_FFF_FFFF_0000(uint32_t maxBits) {
 	while((cnt1111 < 12+16 || cnt0000 < 16) && bits < maxBits) {
 		
 		SET_PIN(CLK,0);
-		__delay_cycles(10);
+		__delay_cycles(20);
 		
 		SET_PIN(CLK,1);
 		if (CHECK_PIN(MISO)) {
@@ -121,7 +121,7 @@ static uint32_t wait_FFF_FFFF_0000(uint32_t maxBits) {
 		else {
 			cnt0000++;
 		}
-		__delay_cycles(10);
+		__delay_cycles(20);
 		bits++;
 	}
 	if(bits >= maxBits)
@@ -159,8 +159,9 @@ static int read_frame(int buf_idx)
 	int wrong_segment, wrong_packet;
 	uint8_t segmentNumber;
 	uint8_t packetNumber;
+//	uint16_t start_row,start_col;
 
-	uint16_t *packet_buf;
+	uint16_t *packet_ptr,*segment_ptr;
 	uint16_t head0,head1,bb;		// head1 keeps CRC, ignored for now
 
 	uint16_t frame_min = 0xFFFF;
@@ -170,41 +171,54 @@ static int read_frame(int buf_idx)
 	uint16_t packet_min;
 	uint16_t packet_max;
 
-	uint16_t *dd = (uint16_t *)(cxt.list_head[buf_idx].dma_start_addr);
-
+	leptonpru_mmap *mmap_buf = (leptonpru_mmap *)(cxt.list_head[buf_idx].dma_start_addr);
+	segment_ptr = mmap_buf->image;
+	
 	wrong_segment = 0;
 	for(i = 0; i < NUMBER_OF_SEGMENTS; ){
 		wrong_packet = 0;
+		packet_ptr = segment_ptr;
 		segment_min = 0xFFFF;
 		segment_max = 0;
-		for(j=0;j<PACKETS_PER_SEGMENT;) {
-			packet_buf = dd+(i*PACKETS_PER_SEGMENT+j)*PACKET_SIZE_UINT16;
-			// TODO: move packet reading to the second PRU, for proper clocking
-			// also would be good to have 2 packet buffers to read in parallel
+//		start_row = i&0x2 ? SEGMENT_HEIGHT : 0;
+//		start_col = i&0x1 ? SEGMENT_WIDTH: 0;
+		for(j=0;j<SEGMENT_HEIGHT;) {
 			packet_min = 0xFFFF;
 			packet_max = 0;
-			packet_buf[0] = head0 = spi_read16();
-			packet_buf[1] = head1 = spi_read16();
-			for(k=2; k<PACKET_SIZE_UINT16; k++) {
-				packet_buf[k] = bb = spi_read16();
+			head0 = spi_read16();
+			head1 = spi_read16();
+#ifndef RAW_DATA			
+			packet_buf = dd+(start_row+j)*IMAGE_WIDTH + start_col;
+#else
+//			packet_buf = dd+ i*SEGMENT_SIZE_UINT16 + j*PACKET_SIZE_UINT16;
+			*packet_ptr++ = head0;
+			*packet_ptr++ = head1;
+#endif
+			for(k=0; k<SEGMENT_WIDTH; k++) {
+				bb = spi_read16();
+//				packet_buf[k] = bb;
+				*packet_ptr++ = bb;
 				if(bb > packet_max)
 					packet_max = bb;
 				else if(bb < packet_min)
 					packet_min = bb;
 			}
 			
+//#ifndef RAW_DATA
 			// skip discard packet (these are transmitted between segments)
+			
 			if((head0 & 0x0FFF) == 0x0FFF && head1 == 0xFFFF) {
 				if(j != 0) {
 					// unexpected discard -the segment was not fully transmitted
 					cxt.packets_mismatch++;
 				}
-				j = 0;
+				j = 0; 
+				packet_ptr = segment_ptr;
 				segment_min = 0xFFFF;
 				segment_max = 0;
 				continue;
 			}
-			
+
 			packetNumber = head0 & 0xFF;
 			// out of sync - wrong packet number received. 
 			// a sync to discard packets shall be performed
@@ -213,6 +227,7 @@ static int read_frame(int buf_idx)
 				if(++wrong_packet >= WRONG_PACKETS_TO_RESYNC)
 					return -2;
 				j = 0;
+				packet_ptr = segment_ptr;
 				segment_min = 0xFFFF;
 				segment_max = 0;
 				continue;
@@ -235,6 +250,9 @@ static int read_frame(int buf_idx)
 				}
 			}
 			
+//#else
+//			wrong_segment = 0;
+//#endif			
 			// TODO: check packet CRC
 			// next packet
 			if(packet_max > segment_max)
@@ -255,12 +273,11 @@ static int read_frame(int buf_idx)
 			if(segment_min < frame_min)
 				frame_min = segment_min;
 			i++;
+			segment_ptr += SEGMENT_SIZE_UINT16;
 		}
 	}	
-	// storing min/max to header of the first frame
-	// TODO: add API for that
-	cxt.list_head[buf_idx].min_val  = dd[0] = frame_min;
-	cxt.list_head[buf_idx].max_val = dd[1] = frame_max;
+	mmap_buf->min_val = frame_min;
+	mmap_buf->max_val = frame_max;
 	cxt.frames_received++;
         return 0;	
 }
@@ -332,7 +349,6 @@ void main()
 				cxt.frames_dropped++;
 			}
 			if(read_frame(LIST_COUNTER_PSY(cxt.list_end))) {
-				
 				if(sync_discard_packet()) {
 					resync();
 					__delay_cycles(100000L);
@@ -371,7 +387,9 @@ void main()
 			// disable CS
 			SET_PIN(CS,1);
 			/* Clear all pending interrupts */
-//			CT_INTC.SECR0 = 0xFFFFFFFF;
+			CT_INTC.SECR0 = 0xFFFFFFFF;
+			// allow some time for ARM to prepare for SYSEV_PRU0_TO_ARM_B handling
+			__delay_cycles(10000000);
 			/* Signal completion */
 			SIGNAL_EVENT(SYSEV_PRU0_TO_ARM_B);
 			

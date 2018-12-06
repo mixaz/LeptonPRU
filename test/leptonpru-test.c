@@ -7,7 +7,8 @@
 #include <sys/types.h>
 #include <sys/mman.h>
 
-#include "../include/lepton.h"
+#include "../include/leptonpru.h"
+#include "../include/leptonpru_int.h"
 
 static void print_frame(char *buf, int size) {
 	int cc;
@@ -25,37 +26,63 @@ static void print_frame(char *buf, int size) {
 	printf("\n");
 }
 
+#ifndef RAW_DATA
 static void print_frame1(uint16_t *buf) {
 	int i,j,nn;
 	printf("----------------\n");
-	for(i=0; i<NUMBER_OF_SEGMENTS*PACKETS_PER_SEGMENT; i++) {
-		nn = i*PACKET_SIZE_UINT16;
-		printf("%03d-[%04x %04x] ",i,buf[nn],buf[nn+1]);
-		for(j=2;j<PACKET_SIZE_UINT16;j++)  {
-			printf("%04x ",buf[nn+j]);
+	nn = 0;
+	for(i=0; i<IMAGE_HEIGHT; i++) {
+		printf("%03d: ",i);
+		for(j=0;j<IMAGE_WIDTH;j++)  {
+			if(j < 10)
+			    printf("%04x ",buf[nn]);
+			nn++;
 		}
 		printf("\n");
 	}
 }
+#else
+static void print_frame1(uint16_t *buf) {
+	int i,j,k,nn;
+	int h0,h1;
+	printf("----------------\n");
+	nn = 0;
+	for(k=0; k<NUMBER_OF_SEGMENTS; k++) {
+		printf("segment: %d\n",k);
+		for(i=0; i<PACKETS_PER_SEGMENT; i++) {
+			h0 = buf[nn++];
+			h1 = buf[nn++];
+			printf("%03d: [%04x-%04x] ",i,h0,h1);
+			for(j=2;j<PACKET_SIZE_UINT16;j++)  {
+//				if(j < 10)
+				    printf("%04x ",buf[nn]);
+				nn++;
+			}
+			printf("\n");
+		}
+	}
+}
+#endif
 
 int main() {
 	int fd,i;
 	unsigned int cc = 0;
 	int err;
-	uint16_t *frame_buffers[FRAMES_NUMBER];
+	leptonpru_mmap *frame_buffers[FRAMES_NUMBER];
 	
 	size_t psize = sysconf(_SC_PAGESIZE);
+	int frame_size = sizeof(leptonpru_mmap);
 	
         fd = open("/dev/leptonpru", O_RDWR | O_SYNC/* | O_NONBLOCK*/);
 	if (fd < 0) {
 		perror("open");
 		assert(0);
 	}
-	printf("fd = %d, FRAME_SIZE=%d\n", fd,FRAME_SIZE);
+	printf("fd = %d, FRAME_SIZE=%d, page_size: %d\n", fd,frame_size,psize);
 
 	for(i=0; i<FRAMES_NUMBER; i++) {
-		int off = ((i*FRAME_SIZE+psize-1)/psize) * psize;
-		frame_buffers[i] = mmap(NULL, FRAME_SIZE, PROT_READ, MAP_SHARED, fd, off);
+		int off = ((i*frame_size+psize-1)/psize) * psize;
+		frame_buffers[i] = mmap(NULL, frame_size, PROT_READ, MAP_SHARED, fd, off);
 		if (frame_buffers[i] == MAP_FAILED) {
 			perror("mmap");
 			assert(0);
@@ -67,7 +94,7 @@ int main() {
 	
 	while(1) {
 		err = read(fd,&cc,1);
-		printf("read: err=%d cc=%d\n",err,cc);
+		printf("read: nn=%d err=%d cc=%d\n",nn,err,cc);
 		if(err == 0) {
 			sleep(1);
 			continue;
@@ -80,24 +107,29 @@ int main() {
 			printf("unexpected frame number, exiting\n");
 			break;
 		}
-		print_frame1(frame_buffers[cc]);
+		print_frame1(frame_buffers[cc]->image);
 		cc = 1;
 		err = write(fd,&cc,1);
-		printf("write: err=%d cc=%d\n",err,cc);
+		printf("write: nn=%d err=%d cc=%d\n",nn,err,cc);
 		
-		if(nn++ >= 10)
+		if(nn++ >= 4)
 			break;
 	}
 
+	printf("releasing buffers\n");
+	
 	for(i=0; i<FRAMES_NUMBER; i++) {
-		if (munmap(frame_buffers[i], FRAME_SIZE)) {
+		printf("unmap buffer:%d\n",i);
+		if (munmap(frame_buffers[i], frame_size)) {
 			perror("munmap");
 			assert(0);
 		}
 	}
 
+	printf("closing fd\n");
 	close(fd);
 
+	printf("quit\n");
 	return 0;
 }
 

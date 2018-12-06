@@ -14,7 +14,7 @@ sdk.commands = make -C $${RPI_LIBS}/$${LEPTONSDK}
 sdkclean.commands = make -C $${RPI_LIBS}/$${LEPTONSDK} clean
 
 DEPENDPATH += .
-INCLUDEPATH += . $${RPI_LIBS}
+INCLUDEPATH += . $${RPI_LIBS} ../include
 
 DESTDIR=.
 OBJECTS_DIR=gen_objs
