@@ -510,42 +510,18 @@ static long beaglelogic_f_ioctl(struct file *filp, unsigned int cmd,
 
 	uint32_t val;
 
-	dev_dbg(dev, "LeptonPRU: IOCTL called cmd = %08X, "\
-			"arg = %08lX\n", cmd, arg);
+	dev_info(dev, "LeptonPRU: IOCTL called cmd = %08X, arg = %08lX\n", cmd, arg);
 
 	switch (cmd) {
-		case IOCTL_BL_GET_VERSION:
+		case IOCTL_GET_VERSION:
 			return 0;
 
-		case IOCTL_BL_CACHE_INVALIDATE:
-			for (val = 0; val < FRAMES_NUMBER; val++) {
-				beaglelogic_unmap_buffer(dev,
-						&bldev->buffers[val]);
-			}
-			return 0;
-
-		case IOCTL_BL_GET_BUFFER_SIZE:
-			val = sizeof(leptonpru_mmap) * FRAMES_NUMBER;
-			if (copy_to_user((void * __user)arg,
-					&val,
-					sizeof(val)))
-				return -EFAULT;
-			return 0;
-
-		case IOCTL_BL_GET_BUFUNIT_SIZE:
-			val = sizeof(leptonpru_mmap);
-			if (copy_to_user((void * __user)arg,
-					&val,
-					sizeof(val)))
-				return -EFAULT;
-			return 0;
-
-		case IOCTL_BL_START:
+		case IOCTL_START:
 			/* Reset and reconfigure the reader object and then start */
 			beaglelogic_start(dev);
 			return 0;
 
-		case IOCTL_BL_STOP:
+		case IOCTL_STOP:
 			beaglelogic_stop(dev);
 			return 0;
 

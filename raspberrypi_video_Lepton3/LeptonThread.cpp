@@ -1,6 +1,7 @@
 #include <stdint.h>
 #include <unistd.h>
 #include <fcntl.h>
+#include <assert.h>
 #include <sys/types.h>
 #include <sys/mman.h>
 
@@ -9,8 +10,7 @@
 #include "Palettes.h"
 #include "Lepton_I2C.h"
 
-
-#include "leptonpru.h"
+#include "LeptonPruLib.h"
 
 #define HAND_TEMP_THRESHOLD 	8050
 
@@ -25,61 +25,35 @@ void LeptonThread::run()
 	//Create the initial image and open the Spi port.
 	myImage = QImage(160, 120, QImage::Format_RGB888);
 
-	int value;
+	unsigned int value;
 
-	struct timespec time_now;
-	unsigned long int t_now = 0; //ms
-	unsigned long int t_interval = 0; //ms
-
-	int fd,i;
-	unsigned int cc = 0;
-	int err;
-	leptonpru_mmap *frame_buffers[FRAMES_NUMBER];
-
-	size_t psize = sysconf(_SC_PAGESIZE);
-	int frame_size = sizeof(leptonpru_mmap);
+	int fd,err;
+	LeptonPruContext ctx;
 	
-        fd = open("/dev/leptonpru", O_RDWR | O_SYNC/* | O_NONBLOCK*/);
+        fd = open("/dev/leptonpru", O_RDWR | O_SYNC);
 	if (fd < 0) {
 		perror("open");
-		exit(0);
-	}
-	printf("fd = %d, FRAME_SIZE=%d\n", fd,frame_size);
-
-	for(i=0; i<FRAMES_NUMBER; i++) {
-		int off = ((i*frame_size+psize-1)/psize) * psize;
-		frame_buffers[i] = (leptonpru_mmap*)mmap(NULL, frame_size, PROT_READ, MAP_SHARED, fd, off);
-		if (frame_buffers[i] == MAP_FAILED) {
-			perror("mmap");
-			exit(0);
-		}
-		printf("%d: %x\n", i, frame_buffers[i]);
+		assert(0);
 	}
 
-	QRgb red = qRgb(255,0,0);
+        if(LeptonPru_init(&ctx,fd) < 0) {
+		perror("LeptonPru_init");
+		assert(0);
+	}
 
 	//Camera Loop
 	while(true) {
 
-		err = read(fd,&cc,1);
-		if(err == 0) {
-			sleep(1);
-			continue;
-		}
+		err = LeptonPru_next_frame(&ctx);
 		if(err < 0) {
-			printf("error detected, exiting\n");
-			break;
-		}
-		if(cc >= FRAMES_NUMBER) {
-			printf("unexpected frame number, exiting\n");
-			break;
+			perror("LeptonPru_next_frame");
+			assert(0);
 		}
 
-		leptonpru_mmap *frameBuffer = frame_buffers[cc];
+		leptonpru_mmap *frameBuffer = ctx.curr_frame;
 		uint16_t minValue = frameBuffer->min_val;
 		uint16_t maxValue = frameBuffer->max_val;
 		float diff =  maxValue - minValue;
-//		printf("read: err=%d cc=%d, min=%d, max=%d\n",err,cc,minValue,maxValue);
 
 		//If the difference between Max and Min is 0, we need to get a new frame before emitting.
 		if(minValue != maxValue){
@@ -92,8 +66,6 @@ void LeptonThread::run()
 				value = (frameBuffer->image[i*IMAGE_WIDTH+j] - minValue) * scale;
 				if(value > 255) 
 					value = 255;
-				if(value < 0) 
-					value = 0;
 				
 				const int *colormap = colormap_ironblack;
 				color = qRgb(colormap[3*value], colormap[3*value+1], colormap[3*value+2]);
@@ -106,9 +78,6 @@ void LeptonThread::run()
 		    //Emit the finalized image for update.
 		    emit updateImage(myImage);
 		}
-		cc = 1;
-		err = write(fd,&cc,1);
-//		printf("write: err1=%d cc=%d\n",err,cc);
 
 	}
 	
