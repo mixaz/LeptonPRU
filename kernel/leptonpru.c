@@ -597,14 +597,14 @@ static ssize_t bl_state_show(struct device *dev,
 
 	return scnprintf(buf, PAGE_SIZE, 
 		"state: %d, queue:%d, frames received: %d, dropped: %d, \
-segments mismatch: %d, packets mismatch: %d, resync: %d, discards found: %d, discard sync fails: %d, packet size:%d\n", 
+segments mismatch: %d, packets mismatch: %d, resync: %d, discards found: %d, discard sync fails: %d\n", 
 		bldev->state,
 		LIST_SIZE(bldev->cxt_pru->list_start,bldev->cxt_pru->list_end),
 		bldev->cxt_pru->frames_received,bldev->cxt_pru->frames_dropped, 
 		bldev->cxt_pru->segments_mismatch,bldev->cxt_pru->packets_mismatch,
 		bldev->cxt_pru->resync_counter,
 		bldev->cxt_pru->discards_found,bldev->cxt_pru->discard_sync_fails,
-		PACKET_SIZE);
+		);
 }
 
 static ssize_t bl_state_store(struct device *dev,
