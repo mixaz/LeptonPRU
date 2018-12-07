@@ -1,27 +1,47 @@
-#ifndef LEPTON_H_
-#define LEPTON_H_
+/*
+ * Internal defines for Lepton PRU
+ *
+ * Copyright (C) 2018 Mikhail Zemlyanukha <gmixaz@gmail.com>
+ *
+ * This program is free software; you can redistribute it and/or modify it
+ * under the terms of the GNU General Public License as published by the
+ * Free Software Foundation; either version 2 of the License, or (at your
+ * option) any later version.
+ */
 
-/* Lepton camera frame attributes */
+#ifndef LEPTONPRU_INT_H_
+#define LEPTONPRU_INT_H_
 
-#define PACKET_SIZE 164  //Bytes
-#define PACKET_SIZE_UINT16 (PACKET_SIZE/2)   
-#define NUMBER_OF_SEGMENTS 4
-#define PACKETS_PER_SEGMENT 60
-#define PACKETS_PER_FRAME (PACKETS_PER_SEGMENT*NUMBER_OF_SEGMENTS)
-#define FRAME_SIZE_UINT16 (PACKET_SIZE_UINT16*PACKETS_PER_FRAME)
-#define FRAME_SIZE (PACKET_SIZE*PACKETS_PER_FRAME)
-#define SEGMENT_SIZE (PACKETS_PER_SEGMENT*PACKET_SIZE)
-#define SEGMENT_SIZE_UINT16 (PACKETS_PER_SEGMENT*PACKET_SIZE_UINT16)
+#include "leptonpru.h"
 
-/* Old school cycle buffer magic */
+/*
+ * Lepton camera frame attributes 
+ */
+#define SEGMENT_WIDTH			(IMAGE_WIDTH/2)
+#define SEGMENT_HEIGHT			(IMAGE_HEIGHT/2)
 
-// max frames number. Must be power of 2
-#define FRAMES_NUMBER 			4
-#define FRAMES_NUMBER_LGC 	8
+#define PACKET_SIZE_UINT16 		(SEGMENT_WIDTH+2)   
+// VoSPI packet size in bytes
+#define PACKET_SIZE 				(PACKET_SIZE_UINT16*2) 
+
+#define NUMBER_OF_SEGMENTS 	4
+
+#define PACKETS_PER_SEGMENT 	SEGMENT_HEIGHT
+#define PACKETS_PER_FRAME 	(PACKETS_PER_SEGMENT*NUMBER_OF_SEGMENTS)
+#define FRAME_SIZE_UINT16 		(PACKET_SIZE_UINT16*PACKETS_PER_FRAME)
+#define FRAME_SIZE 				(PACKET_SIZE*PACKETS_PER_FRAME)
+
+#define SEGMENT_SIZE_UINT16 	(PACKETS_PER_SEGMENT*PACKET_SIZE_UINT16)
+#define SEGMENT_SIZE 			(SEGMENT_SIZE_UINT16*2)
+
+/*
+ * Old school cycle buffer magic 
+ */
+#define FRAMES_NUMBER_LGC 	(FRAMES_NUMBER*2)
 // physical mask
-#define FRAMES_MASK_PSY 	0x3
+#define FRAMES_MASK_PSY 		0x3
 // logical mask
-#define FRAMES_MASK_LGC 	0x7
+#define FRAMES_MASK_LGC 		0x7
 
 #define LIST_IS_EMPTY(start,end)	((start) == (end))
 //#define LIST_IS_FULL(start,end)	(((start) ^ (end)) & (FRAMES_MASK_PSY ^ FRAMES_MASK_LGC))
@@ -50,8 +70,6 @@
 struct buflist {
 	uint32_t dma_start_addr;
 	uint32_t dma_end_addr;
-	uint32_t min_val;
-	uint32_t max_val;
 };
 
 /* Shared structure containing PRU attributes */
@@ -61,6 +79,9 @@ struct capture_context {
 
 	uint32_t cmd;           // Command from Linux host to us
 	int32_t resp;            // Response code
+
+	uint32_t dump_vospi;	// debug mode: dump VoSPI packets to mmap buffers
+						// must be set before the buffers are allocated (start capturing)
 
 	// counters
 	uint32_t frames_dropped;		// count of dropped frames due to buffer overrun
@@ -76,4 +97,14 @@ struct capture_context {
 	struct buflist list_head[FRAMES_NUMBER];	// frames cycle queue
 };
 
-#endif
+enum beaglelogic_states {
+	STATE_BL_DISABLED,	/* Powered off (at module start) */
+	STATE_BL_INITIALIZED,	/* Powered on */
+	STATE_BL_MEMALLOCD,	/* Buffers allocated */
+	STATE_BL_ARMED,		/* All Buffers DMA-mapped and configuration done */
+	STATE_BL_RUNNING,		/* Data being captured */
+	STATE_BL_REQUEST_STOP,	/* Stop requested */
+	STATE_BL_ERROR   		/* Buffer overrun */
+};
+
+#endif /* LEPTONPRU_INT_H_ */

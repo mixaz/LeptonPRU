@@ -126,17 +126,22 @@ And in dmesg logging:
 [ 2632.654854] misc leptonpru: Lepton PRU initialized OK
 ```
 
- Compile and run console test app, in LeptonPRU/test folder:
+Compile LeptunPruLib - userland library, in LeptonPRU/library folder:
 ```
-cc leptonpru-test.c
-./a.out
+make
 ```
-It prints 10 frames from the module to stdout. The data is in Lepton VoSPI format, it's just raw data in packets of 164 bytes length. You can run QT test app to see the video stream in GUI.
+
+Compile and run console test app, in LeptonPRU/test folder:
+```
+make
+./leptonpru-test
+```
+It prints 4 frames from the module to stdout. You can run QT test app to see the video stream in GUI, see below.
 
 See the driver stats:
 ```
 $ cat /sys/devices/virtual/misc/leptonpru/state
-state: 1, queue:2, frames received: 13, dropped: 0, segments mismatch: 105, 
+state: 1, queue:2, frames received: 6, dropped: 0, segments mismatch: 105, 
 packets mismatch: 6000, resync: 1, discards found: 30, discard sync fails: 0
 ```
 
@@ -146,6 +151,8 @@ To build the example you'll need qt4 SDK:
 ```
 sudo apt-get install qt4-dev-tools
 ```
+
+Compile LeptonPruLib library, as described above.
 
 Compile QT example (modified version of an example from FLIR Lepton SDK, for RaspberryPI) in LeptonPRU/raspberrypi_video_Lepton3 folder:
 ```

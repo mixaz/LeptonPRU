@@ -47,7 +47,7 @@
 #include <linux/fs.h>
 
 #include "leptonpru.h"
-#include "../include/lepton.h"
+#include "leptonpru_int.h"
 
 #define USE_PRUS 1
 
@@ -118,7 +118,7 @@ struct logic_buffer_reader {
 		struct beaglelogicdev, miscdev)
 
 #define DRV_NAME		"leptonpru"
-#define DRV_VERSION		"0.1"
+#define DRV_VERSION		"0.2"
 
 /* Begin Buffer Management section */
 
@@ -136,12 +136,12 @@ static int beaglelogic_memalloc(struct device *dev)
 
 	/* Allocate DMA buffers */
 	for (i = 0; i < FRAMES_NUMBER; i++) {
-		buf = kmalloc(FRAME_SIZE, GFP_KERNEL);
+		buf = kmalloc(sizeof(leptonpru_mmap), GFP_KERNEL);
 		if (!buf)
 			goto failrelease;
 
 		/* Fill with 0xFF */
-		memset(buf, 0xFF, FRAME_SIZE);
+		memset(buf, 0xFF, sizeof(leptonpru_mmap));
 
 		/* Set the buffers */
 		bldev->buffers[i].buf = buf;
@@ -150,7 +150,7 @@ static int beaglelogic_memalloc(struct device *dev)
 
 	/* Write log and unlock */
 	dev_info(dev, "Successfully allocated %d bytes of memory.\n",
-			FRAMES_NUMBER * FRAME_SIZE);
+			FRAMES_NUMBER * sizeof(leptonpru_mmap));
 
 	mutex_unlock(&bldev->mutex);
 
@@ -184,20 +184,19 @@ static int beaglelogic_map_buffer(struct device *dev, struct logic_buffer *buf)
 {
 	dma_addr_t dma_addr;
 
-	dev_info(dev,"beaglelogic_map_buffer: %x ",buf);
-
 	/* If already mapped, do nothing */
 	if (buf->state == STATE_BL_BUF_MAPPED)
 		return 0;
 
-	dma_addr = dma_map_single(dev, buf->buf, FRAME_SIZE, DMA_FROM_DEVICE);
+	dma_addr = dma_map_single(dev, buf->buf, sizeof(leptonpru_mmap), DMA_FROM_DEVICE);
+
+	dev_info(dev,"beaglelogic_map_buffer: %x, addr: %x, size: %d\n",buf,dma_addr, sizeof(leptonpru_mmap));
+	
 	if (dma_mapping_error(dev, dma_addr))
 		goto fail;
 	
 	buf->phys_addr = dma_addr;
 	buf->state = STATE_BL_BUF_MAPPED;
-
-	dev_info(dev," - %x\n",buf->phys_addr);
 
 	return 0;
 fail:
@@ -209,7 +208,7 @@ static void beaglelogic_unmap_buffer(struct device *dev,
                                      struct logic_buffer *buf)
 {
 	dev_info(dev,"beaglelogic_unmap_buffer: %x - %x\n",buf,buf->phys_addr);
-	dma_unmap_single(dev, buf->phys_addr, FRAME_SIZE, DMA_FROM_DEVICE);
+	dma_unmap_single(dev, buf->phys_addr, sizeof(leptonpru_mmap), DMA_FROM_DEVICE);
 	buf->state = STATE_BL_BUF_UNMAPPED;
 }
 
@@ -230,7 +229,7 @@ static int beaglelogic_map_and_submit_all_buffers(struct device *dev)
 			goto fail;
 		addr = bldev->buffers[i].phys_addr;
 		pru_buflist[i].dma_start_addr = addr;
-		pru_buflist[i].dma_end_addr = addr + FRAME_SIZE;
+		pru_buflist[i].dma_end_addr = addr + sizeof(leptonpru_mmap);
 	}
 
 	/* Update state to ready */
@@ -259,24 +258,33 @@ fail:
 /* Send command to the PRU firmware */
 static int beaglelogic_send_cmd(struct beaglelogicdev *bldev, uint32_t cmd)
 {
-#define TIMEOUT     10000
+	struct device *dev = bldev->miscdev.this_device;
+#define TIMEOUT     1000000
 	uint32_t timeout = TIMEOUT;
 
+//	dev_info(dev, "command %d to PRU\n",cmd);
+	
 	bldev->cxt_pru->cmd = cmd;
 
 	/* Wait for firmware to process the command */
 	while (--timeout && bldev->cxt_pru->cmd != 0)
 		cpu_relax();
 
-	if (timeout == 0)
+	if (timeout == 0) {
+		dev_info(dev, "timeout when sending command %d to PRU\n",cmd);
 		return -100;
+	}
 
+	dev_info(dev, "command %d to PRU, response=%d\n",cmd,bldev->cxt_pru->resp);
+	
 	return bldev->cxt_pru->resp;
 }
 
 /* Request the PRU firmware to stop capturing */
 static void beaglelogic_request_stop(struct beaglelogicdev *bldev)
 {
+	struct device *dev = bldev->miscdev.this_device;
+	dev_info(dev, "beaglelogic_request_stop\n");
 	/* Trigger interrupt */
 	pruss_intc_trigger(bldev->to_bl_irq);
 	beaglelogic_send_cmd(bldev,CMD_STOP);
@@ -289,7 +297,7 @@ irqreturn_t beaglelogic_serve_irq(int irqno, void *data)
 	struct device *dev = bldev->miscdev.this_device;
 	uint32_t state;
 
-	dev_dbg(dev,"Beaglelogic IRQ #%d\n", irqno);
+//	dev_info(dev,"Beaglelogic IRQ #%d\n", irqno);
 	if (irqno == bldev->from_bl_irq_1) {
 		wake_up_interruptible(&bldev->wait);
 	} 
@@ -299,12 +307,12 @@ irqreturn_t beaglelogic_serve_irq(int irqno, void *data)
 		 *  2. After stop  */
 		state = bldev->state;
 		if (state <= STATE_BL_ARMED) {
-			dev_dbg(dev, "config written, Lepton PRU ready\n");
+			dev_info(dev, "config written, Lepton PRU ready\n");
 			return IRQ_HANDLED;
 		}
 		else if (state != STATE_BL_REQUEST_STOP &&
 				state != STATE_BL_RUNNING) {
-			dev_err(dev, "Unexpected stop request\n");
+			dev_info(dev, "Unexpected stop request\n");
 			bldev->state = STATE_BL_ERROR;
 			return IRQ_HANDLED;
 		}
@@ -398,7 +406,7 @@ static int beaglelogic_f_open(struct inode *inode, struct file *filp)
 	return 0;
 }
 
-/* Reads index (0/1) of ready buffer . */
+/* Reads index of ready buffer . */
 ssize_t beaglelogic_f_read (struct file *filp, char __user *buf,
                           size_t sz, loff_t *offset)
 {
@@ -427,12 +435,14 @@ ssize_t beaglelogic_f_read (struct file *filp, char __user *buf,
 	// no buffers ready
 	if (filp->f_flags & O_NONBLOCK) {
 		return 0;
-	}	
+	}
+	
 	if (wait_event_interruptible(bldev->wait,
 			!LIST_IS_EMPTY(cxt->list_start,cxt->list_end)))
 		return -ERESTARTSYS;
 	
 	nn = LIST_COUNTER_PSY(cxt->list_start);
+	
 	if (copy_to_user(buf, &nn, 1))
 		return -EFAULT;
 	return 1;
@@ -443,6 +453,7 @@ ssize_t beaglelogic_f_write (struct file *filp, const char __user *buf,
 {
 	struct logic_buffer_reader *reader = filp->private_data;
 	struct beaglelogicdev *bldev = reader->bldev;
+	struct device *dev = bldev->miscdev.this_device;
 	uint8_t nn;
 	
 	if (bldev->state == STATE_BL_ERROR)
@@ -455,6 +466,8 @@ ssize_t beaglelogic_f_write (struct file *filp, const char __user *buf,
 	if (copy_from_user(&nn, buf, 1))
 		return -EFAULT;
 
+//	dev_info(dev,"beaglelogic_f_write: nn=%d",nn);
+	
 	LIST_COUNTER_INC2(bldev->cxt_pru->list_start,nn);
 
 	return 1;
@@ -469,15 +482,16 @@ int beaglelogic_f_mmap(struct file *filp, struct vm_area_struct *vma)
 	struct device *dev = bldev->miscdev.this_device;
 
 	unsigned long addr = vma->vm_start;
+	int size = vma->vm_end-addr;
 
-        nn = (vma->vm_pgoff << PAGE_SHIFT)/FRAME_SIZE;
+        nn = (vma->vm_pgoff << PAGE_SHIFT)/sizeof(leptonpru_mmap);
 
-	dev_info(dev,"beaglelogic_f_mmap vm_start=%lx, len=%ld, off=%ld, framebuf=%d\n",
-			addr,vma->vm_end-addr,vma->vm_pgoff,nn);
+	dev_info(dev,"beaglelogic_f_mmap vm_start=%lx, size=%d, off=%ld, framebuf=%d\n",
+			addr,size,vma->vm_pgoff,nn);
 
 	ret = remap_pfn_range(vma, addr,
 			(bldev->buffers[nn].phys_addr) >> PAGE_SHIFT,
-			FRAME_SIZE,
+			sizeof(leptonpru_mmap),
 			vma->vm_page_prot);
 	
 	if (ret)
@@ -496,43 +510,18 @@ static long beaglelogic_f_ioctl(struct file *filp, unsigned int cmd,
 
 	uint32_t val;
 
-	dev_dbg(dev, "LeptonPRU: IOCTL called cmd = %08X, "\
-			"arg = %08lX\n", cmd, arg);
+	dev_info(dev, "LeptonPRU: IOCTL called cmd = %08X, arg = %08lX\n", cmd, arg);
 
 	switch (cmd) {
-		case IOCTL_BL_GET_VERSION:
+		case IOCTL_GET_VERSION:
 			return 0;
 
-		case IOCTL_BL_CACHE_INVALIDATE:
-			for (val = 0; val < FRAMES_NUMBER; val++) {
-				beaglelogic_unmap_buffer(dev,
-						&bldev->buffers[val]);
-			}
-			return 0;
-
-		case IOCTL_BL_GET_BUFFER_SIZE:
-			val = FRAME_SIZE * FRAMES_NUMBER;
-			if (copy_to_user((void * __user)arg,
-					&val,
-					sizeof(val)))
-				return -EFAULT;
-			return 0;
-
-		case IOCTL_BL_GET_BUFUNIT_SIZE:
-			val = FRAME_SIZE;
-			if (copy_to_user((void * __user)arg,
-					&val,
-					sizeof(val)))
-				return -EFAULT;
-			return 0;
-
-		case IOCTL_BL_START:
+		case IOCTL_START:
 			/* Reset and reconfigure the reader object and then start */
-
 			beaglelogic_start(dev);
 			return 0;
 
-		case IOCTL_BL_STOP:
+		case IOCTL_STOP:
 			beaglelogic_stop(dev);
 			return 0;
 
@@ -591,18 +580,14 @@ static const struct file_operations pru_beaglelogic_fops = {
 static ssize_t bl_bufunitsize_show(struct device *dev,
         struct device_attribute *attr, char *buf)
 {
-//	struct beaglelogicdev *bldev = dev_get_drvdata(dev);
-
-	return scnprintf(buf, PAGE_SIZE, "%d\n", FRAME_SIZE);
+	return scnprintf(buf, PAGE_SIZE, "%d\n", sizeof(leptonpru_mmap));
 }
 
 static ssize_t bl_memalloc_show(struct device *dev,
         struct device_attribute *attr, char *buf)
 {
-//	struct beaglelogicdev *bldev = dev_get_drvdata(dev);
-
 	return scnprintf(buf, PAGE_SIZE, "%d\n",
-			FRAMES_NUMBER * FRAME_SIZE);
+			FRAMES_NUMBER * sizeof(leptonpru_mmap));
 }
 
 static ssize_t bl_state_show(struct device *dev,
@@ -618,7 +603,8 @@ segments mismatch: %d, packets mismatch: %d, resync: %d, discards found: %d, dis
 		bldev->cxt_pru->frames_received,bldev->cxt_pru->frames_dropped, 
 		bldev->cxt_pru->segments_mismatch,bldev->cxt_pru->packets_mismatch,
 		bldev->cxt_pru->resync_counter,
-		bldev->cxt_pru->discards_found,bldev->cxt_pru->discard_sync_fails);
+		bldev->cxt_pru->discards_found,bldev->cxt_pru->discard_sync_fails,
+		);
 }
 
 static ssize_t bl_state_store(struct device *dev,
@@ -656,12 +642,11 @@ static ssize_t bl_buffers_show(struct device *dev,
 	int i, c, cnt;
 
 	for (i = 0, cnt = 0; i < FRAMES_NUMBER; i++) {
-		c = scnprintf(buf, PAGE_SIZE, "%c%c %08x, %u [%d-%d]\n",
+		c = scnprintf(buf, PAGE_SIZE, "%c%c %08x, %u\n",
 			i == LIST_COUNTER_PSY(cxt->list_start) ? 's' : ' ',
 			i == LIST_COUNTER_PSY(cxt->list_end) ? 'e' : ' ',
 			(uint32_t)bldev->buffers[i].phys_addr,
-			FRAME_SIZE,
-			cxt->list_head[i].min_val,cxt->list_head[i].max_val);
+			sizeof(leptonpru_mmap));
 		cnt += c;
 		buf += c;
 	}
