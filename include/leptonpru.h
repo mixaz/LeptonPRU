@@ -13,7 +13,7 @@
 #define LEPTONPRU_H_
 
 // Dump raw packets data
-#define RAW_DATA
+//#define RAW_DATA
 
 /*
  * Lepton camera frame attributes 

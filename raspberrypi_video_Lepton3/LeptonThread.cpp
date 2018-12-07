@@ -25,7 +25,7 @@ void LeptonThread::run()
 	//Create the initial image and open the Spi port.
 	myImage = QImage(160, 120, QImage::Format_RGB888);
 
-	int column,row,value;
+	int value;
 
 	struct timespec time_now;
 	unsigned long int t_now = 0; //ms
@@ -90,11 +90,15 @@ void LeptonThread::run()
 			    for(int j=0; j<IMAGE_WIDTH; j++) {
 			
 				value = (frameBuffer->image[i*IMAGE_WIDTH+j] - minValue) * scale;
+				if(value > 255) 
+					value = 255;
+				if(value < 0) 
+					value = 0;
 				
 				const int *colormap = colormap_ironblack;
 				color = qRgb(colormap[3*value], colormap[3*value+1], colormap[3*value+2]);
 				
-				myImage.setPixel(j, i, color);
+				myImage.setPixel( j, i, color);
 					
 			    }
 		    }

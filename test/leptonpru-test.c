@@ -34,7 +34,7 @@ static void print_frame1(uint16_t *buf) {
 	for(i=0; i<IMAGE_HEIGHT; i++) {
 		printf("%03d: ",i);
 		for(j=0;j<IMAGE_WIDTH;j++)  {
-			if(j < 10)
+//			if(j < 10)
 			    printf("%04x ",buf[nn]);
 			nn++;
 		}
@@ -107,6 +107,7 @@ int main() {
 			printf("unexpected frame number, exiting\n");
 			break;
 		}
+		printf("min: %d, max: %d",frame_buffers[cc]->min_val,frame_buffers[cc]->max_val);
 		print_frame1(frame_buffers[cc]->image);
 		cc = 1;
 		err = write(fd,&cc,1);

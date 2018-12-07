@@ -30,7 +30,7 @@
  * Define firmware version
  */
 #define MAJORVER	0
-#define MINORVER	7
+#define MINORVER	2
 
 #define SET_PIN(bit,high) 		if(high) __R30 |= (1 << (bit)); else __R30 &= ~(1 << (bit));
 #define INVERT_PIN(bit) 		__R30 ^= (1 << (bit));
@@ -159,7 +159,6 @@ static int read_frame(int buf_idx)
 	int wrong_segment, wrong_packet;
 	uint8_t segmentNumber;
 	uint8_t packetNumber;
-//	uint16_t start_row,start_col;
 
 	uint16_t *packet_ptr,*segment_ptr;
 	uint16_t head0,head1,bb;		// head1 keeps CRC, ignored for now
@@ -180,23 +179,18 @@ static int read_frame(int buf_idx)
 		packet_ptr = segment_ptr;
 		segment_min = 0xFFFF;
 		segment_max = 0;
-//		start_row = i&0x2 ? SEGMENT_HEIGHT : 0;
-//		start_col = i&0x1 ? SEGMENT_WIDTH: 0;
+		
 		for(j=0;j<SEGMENT_HEIGHT;) {
 			packet_min = 0xFFFF;
 			packet_max = 0;
 			head0 = spi_read16();
 			head1 = spi_read16();
-#ifndef RAW_DATA			
-			packet_buf = dd+(start_row+j)*IMAGE_WIDTH + start_col;
-#else
-//			packet_buf = dd+ i*SEGMENT_SIZE_UINT16 + j*PACKET_SIZE_UINT16;
+#ifdef RAW_DATA			
 			*packet_ptr++ = head0;
 			*packet_ptr++ = head1;
 #endif
 			for(k=0; k<SEGMENT_WIDTH; k++) {
 				bb = spi_read16();
-//				packet_buf[k] = bb;
 				*packet_ptr++ = bb;
 				if(bb > packet_max)
 					packet_max = bb;
@@ -204,9 +198,7 @@ static int read_frame(int buf_idx)
 					packet_min = bb;
 			}
 			
-//#ifndef RAW_DATA
 			// skip discard packet (these are transmitted between segments)
-			
 			if((head0 & 0x0FFF) == 0x0FFF && head1 == 0xFFFF) {
 				if(j != 0) {
 					// unexpected discard -the segment was not fully transmitted
@@ -250,9 +242,6 @@ static int read_frame(int buf_idx)
 				}
 			}
 			
-//#else
-//			wrong_segment = 0;
-//#endif			
 			// TODO: check packet CRC
 			// next packet
 			if(packet_max > segment_max)
@@ -273,7 +262,11 @@ static int read_frame(int buf_idx)
 			if(segment_min < frame_min)
 				frame_min = segment_min;
 			i++;
+#ifdef RAW_DATA
 			segment_ptr += SEGMENT_SIZE_UINT16;
+#else
+			segment_ptr += SEGMENT_HEIGHT*SEGMENT_WIDTH;
+#endif
 		}
 	}	
 	mmap_buf->min_val = frame_min;

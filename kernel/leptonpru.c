@@ -46,6 +46,7 @@
 #include <linux/sysfs.h>
 #include <linux/fs.h>
 
+#include "leptonpru.h"
 #include "leptonpru_int.h"
 
 #define USE_PRUS 1
@@ -261,7 +262,7 @@ static int beaglelogic_send_cmd(struct beaglelogicdev *bldev, uint32_t cmd)
 #define TIMEOUT     1000000
 	uint32_t timeout = TIMEOUT;
 
-	dev_info(dev, "command %d to PRU\n",cmd);
+//	dev_info(dev, "command %d to PRU\n",cmd);
 	
 	bldev->cxt_pru->cmd = cmd;
 
@@ -287,7 +288,6 @@ static void beaglelogic_request_stop(struct beaglelogicdev *bldev)
 	/* Trigger interrupt */
 	pruss_intc_trigger(bldev->to_bl_irq);
 	beaglelogic_send_cmd(bldev,CMD_STOP);
-	dev_info(dev, "beaglelogic_request_stop2\n");
 }
 
 /* This is [to be] called from a threaded IRQ handler */
@@ -297,7 +297,7 @@ irqreturn_t beaglelogic_serve_irq(int irqno, void *data)
 	struct device *dev = bldev->miscdev.this_device;
 	uint32_t state;
 
-	dev_info(dev,"Beaglelogic IRQ #%d\n", irqno);
+//	dev_info(dev,"Beaglelogic IRQ #%d\n", irqno);
 	if (irqno == bldev->from_bl_irq_1) {
 		wake_up_interruptible(&bldev->wait);
 	} 
@@ -316,7 +316,6 @@ irqreturn_t beaglelogic_serve_irq(int irqno, void *data)
 			bldev->state = STATE_BL_ERROR;
 			return IRQ_HANDLED;
 		}
-		dev_info(dev, "waking up to STATE_BL_INITIALIZED\n");
 		bldev->state = STATE_BL_INITIALIZED;
 		wake_up_interruptible(&bldev->wait);
 	}
@@ -378,7 +377,6 @@ void beaglelogic_stop(struct device *dev)
 			beaglelogic_request_stop(bldev);
 			bldev->state = STATE_BL_REQUEST_STOP;
 
-			dev_info(dev, "waiting for STATE_BL_INITIALIZED\n");
 			/* Wait for the PRU to signal completion */
 			wait_event_interruptible(bldev->wait,
 					bldev->state == STATE_BL_INITIALIZED);
@@ -429,7 +427,6 @@ ssize_t beaglelogic_f_read (struct file *filp, char __user *buf,
 
 	if(!LIST_IS_EMPTY(cxt->list_start,cxt->list_end)) {
 		nn = LIST_COUNTER_PSY(cxt->list_start);
-		dev_info(dev, "buffer ready1: %d\n",nn);
 		if (copy_to_user(buf, &nn, 1))
 			return -EFAULT;
 		return 1;
@@ -440,15 +437,11 @@ ssize_t beaglelogic_f_read (struct file *filp, char __user *buf,
 		return 0;
 	}
 	
-	dev_info(dev, "waiting for packet LIST_IS_EMPTY:%d\n",LIST_IS_EMPTY(cxt->list_start,cxt->list_end));
-	
 	if (wait_event_interruptible(bldev->wait,
 			!LIST_IS_EMPTY(cxt->list_start,cxt->list_end)))
 		return -ERESTARTSYS;
 	
 	nn = LIST_COUNTER_PSY(cxt->list_start);
-	
-	dev_info(dev, "buffer ready2: %d\n",nn);
 	
 	if (copy_to_user(buf, &nn, 1))
 		return -EFAULT;
@@ -473,7 +466,7 @@ ssize_t beaglelogic_f_write (struct file *filp, const char __user *buf,
 	if (copy_from_user(&nn, buf, 1))
 		return -EFAULT;
 
-	dev_info(dev,"beaglelogic_f_write: nn=%d",nn);
+//	dev_info(dev,"beaglelogic_f_write: nn=%d",nn);
 	
 	LIST_COUNTER_INC2(bldev->cxt_pru->list_start,nn);
 
@@ -587,12 +580,9 @@ static int beaglelogic_f_release(struct inode *inode, struct file *filp)
 	struct beaglelogicdev *bldev = reader->bldev;
 	struct device *dev = bldev->miscdev.this_device;
 
-	dev_info(dev,"beaglelogic_f_release 1\n");
 	/* Stop & Release */
 	beaglelogic_stop(dev);
-	dev_info(dev,"beaglelogic_f_release 2\n");
 	devm_kfree(dev, reader);
-	dev_info(dev,"beaglelogic_f_release 3\n");
 
 	return 0;
 }
