@@ -1,5 +1,7 @@
 /*
- * Userspace/Kernelspace common API for Lepton PRU
+ * Userspace/Kernelspace common API.
+ *
+ * This file is a part of the LeptonPRU project.
  *
  * Copyright (C) 2018 Mikhail Zemlyanukha <gmixaz@gmail.com>
  *

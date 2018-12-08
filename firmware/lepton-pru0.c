@@ -1,9 +1,9 @@
 /*
- * PRU Firmware for IR camera FLIR Lepton 3
+ * PRU Firmware for IR camera FLIR Lepton 3.
+ *
+ * This file is a part of the LeptonPRU project.
  *
  * Copyright (C) 2018 Mikhail Zemlyanukha <gmixaz@gmail.com>
- *
- * This file is a part of the LeptonPRU project
  *
  * This program is free software; you can redistribute it and/or modify it
  * under the terms of the GNU General Public License as published by the

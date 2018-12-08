@@ -1,5 +1,7 @@
 /*
- * LeptonPRU userland library
+ * Userspace helper library.
+ *
+ * This file is a part of the LeptonPRU project.
  *
  * Copyright (C) 2018 Mikhail Zemlyanukha <gmixaz@gmail.com>
  *
@@ -43,7 +45,7 @@ int LeptonPru_init(LeptonPruContext *ctx, int fd) {
             break;
         }
 	ctx->frame_buffers[i] = mm;
-	printf("%d: %x\n", i, ctx->frame_buffers[i]);
+//	printf("%d: %x\n", i, ctx->frame_buffers[i]);
     }
     if(err) {
 	ctx->err = err;

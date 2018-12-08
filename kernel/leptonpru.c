@@ -1,10 +1,10 @@
 /*
  * Kernel module for IR camera FLIR Lepton using SPI bit-banging on PRU core
- * Designed to be used in conjunction with a modified pru_rproc driver
+ * Designed to be used in conjunction with a modified pru_rproc driver.
+ *
+ * This file is a part of the LeptonPRU project.
  *
  * Copyright (C) 2018 Mikhail Zemlyanukha <gmixaz@gmail.com>
- *
- * This file is a part of the LeptonPRU project
  *
  * This program is free software; you can redistribute it and/or modify it
  * under the terms of the GNU General Public License as published by the

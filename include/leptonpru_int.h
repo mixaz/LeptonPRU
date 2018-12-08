@@ -1,5 +1,7 @@
 /*
- * Internal defines for Lepton PRU
+ * Internal defines for kernel driver and PRU firmware.
+ *
+ * This file is a part of the LeptonPRU project.
  *
  * Copyright (C) 2018 Mikhail Zemlyanukha <gmixaz@gmail.com>
  *
