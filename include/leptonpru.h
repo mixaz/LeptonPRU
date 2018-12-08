@@ -14,7 +14,6 @@
 
 /* ioctl calls that can be issued on /dev/leptonpru */
 
-#define IOCTL_GET_VERSION   			_IOR('k', 0x20, u32)
 #define IOCTL_START               			_IO('k', 0x29)
 #define IOCTL_STOP                			_IO('k', 0x2A)
 

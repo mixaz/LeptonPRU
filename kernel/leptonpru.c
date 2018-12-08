@@ -508,23 +508,14 @@ static long beaglelogic_f_ioctl(struct file *filp, unsigned int cmd,
 	struct beaglelogicdev *bldev = reader->bldev;
 	struct device *dev = bldev->miscdev.this_device;
 
-	uint32_t val;
-
-	dev_info(dev, "LeptonPRU: IOCTL called cmd = %08X, arg = %08lX\n", cmd, arg);
-
 	switch (cmd) {
-		case IOCTL_GET_VERSION:
-			return 0;
-
 		case IOCTL_START:
 			/* Reset and reconfigure the reader object and then start */
 			beaglelogic_start(dev);
 			return 0;
-
 		case IOCTL_STOP:
 			beaglelogic_stop(dev);
 			return 0;
-
 	}
 	return -ENOTTY;
 }
@@ -603,8 +594,7 @@ segments mismatch: %d, packets mismatch: %d, resync: %d, discards found: %d, dis
 		bldev->cxt_pru->frames_received,bldev->cxt_pru->frames_dropped, 
 		bldev->cxt_pru->segments_mismatch,bldev->cxt_pru->packets_mismatch,
 		bldev->cxt_pru->resync_counter,
-		bldev->cxt_pru->discards_found,bldev->cxt_pru->discard_sync_fails,
-		);
+		bldev->cxt_pru->discards_found,bldev->cxt_pru->discard_sync_fails);
 }
 
 static ssize_t bl_state_store(struct device *dev,
