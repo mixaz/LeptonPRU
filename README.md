@@ -126,7 +126,7 @@ And in dmesg logging:
 [ 2632.654854] misc leptonpru: Lepton PRU initialized OK
 ```
 
-Compile LeptunPruLib - userland library, in LeptonPRU/library folder:
+Compile LeptunPruLib - userspace library, in LeptonPRU/library folder:
 ```
 make
 ```
@@ -171,22 +171,60 @@ then run raspberrypi_video
 
 See LeptonThread.cpp for code related to the driver usage.
 
+## Code sample
+
+```
+	int fd;
+	LeptonPruContext ctx;
+	
+	// open LeptonPRU device driver
+        fd = open("/dev/leptonpru", O_RDWR | O_SYNC);
+	if (fd < 0) {
+		perror("open");
+		assert(0);
+	}
+
+	// initialize frame buffers
+        if(LeptonPru_init(&ctx,fd) < 0) {
+		perror("LeptonPru_init");
+		assert(0);
+	}
+
+	while(1) {
+		
+		// read next frame
+		if(LeptonPru_next_frame(&ctx) < 0) {
+			perror("LeptonPru_next_frame");
+			break;
+		}
+		// minimal&maximum values in the image, just in case
+		printf("frame:%d min: %d, max: %d",
+			nn,ctx.curr_frame->min_val,ctx.curr_frame->max_val);
+
+		<do whataever you need with image data at ctx.curr_frame->image>
+		
+	}
+
+	// release frame buffers
+        if(LeptonPru_release(&ctx) < 0) {
+		perror("LeptonPru_release");
+	}
+
+	// release the driver
+	close(fd);
+```
+
 ## Some Additional info and links
 
 There're some Lepton tech specs in docs folder.
 
 Source code of this driver is based on BeagleLogic. BL uses 2 PRU, we use only one. BL needs exact timings, while Lepton camera can deal with flixible SPI rates 2-20Mhz. Currently FW for the second PRU is also loaded but it does nothing, shall be removed.
 
-Frames are sent in VoSPI format - 4 segments for 160x120 image, see FLIR docs. See QT example
-how to convert it to an image (LeptonThread.cpp).
+Frames are sent to userspace app via a cyclic queue, depth of 4. If the app can't process the frames fast enough (buffer overrun case), then the last frame is being overwritten by more recent frames.
 
-Frames are sent to userland app via a cyclic queue, depth of 4. If the app can't process the frames fast enough (buffer overrun case), then the last frame is being overwritten by more recent frames.
+The frames are sent via 4 mmap buffers, to avoid extra kernel-to-userspace transfers. PRU writes to that RAM directly, and it is shared with userspace app.
 
-The frames are sent via 4 mmap buffers, to avoid extra kernel-to-userspace transfers. PRU writes to that RAM
-directly, and it is shared with userland app.
-
-When you read from device file /dev/leptonpru, index of the first frame in the queue is returned. Userland app
-uses the index to get frame data from appropriate mmap buffer. If there's no new frames (the queue is empty) then read operation blocks, alternativelly you can set non-block mode for the file descriptor to get a read() call return immediately with zero bytes being read.
+When you read from device file /dev/leptonpru, index of the first frame in the queue is returned. Userspace app uses the index to get frame data from appropriate mmap buffer. If there's no new frames (the queue is empty) then read operation blocks, alternativelly you can set non-block mode for the file descriptor to get a read() call return immediately with zero bytes being read.
 
 /sys/devices/virtual/misc/leptonpru/ provides FS class attributes to handle driver. Useful ones are state and buffers, state prints statistics, and can accept 0/1 as input to stop/start frames capturing.
 
@@ -201,6 +239,8 @@ Lepton packet CRC is not checked.
 Telemetry is not supported.
 
 ### Links
+
+Some useful links just in case:
 
 * [FLIR Lepton Engineering Datasheet](docs/flir-lepton-engineering-datasheet.pdf)
 * [FLIR Lepton 2 vs Lepton 3](docs/lepton-vs-lepton-3-app-note.pdf)
