@@ -126,7 +126,7 @@ And in dmesg logging:
 [ 2632.654854] misc leptonpru: Lepton PRU initialized OK
 ```
 
-Compile LeptunPruLib - userspace library, in LeptonPRU/library folder:
+Compile LeptunPruLib - userspace helper library, in LeptonPRU/library folder:
 ```
 make
 ```
