@@ -42,6 +42,33 @@ copy release/lepton-pru0.out and release/lepton-pru1.out to /lib/firmware/lepton
 sudo su -c "PRU_CGT=/usr/share/ti/cgt-pru make install"
 ```
 
+### Cross compiling PRU firmware in dockcross
+
+Download TI PRU Code Generation Tool (compiler) from http://www.ti.com/tool/download/PRU-CGT-2-1, install it to LeptonPRU folder. You will have `ti-cgt-pru_2.3.1` subfolder in LeptonPRU.
+
+Download TI PRU Software Support Package, run in LeptonPRU folder:
+```
+git clone git://git.ti.com/pru-software-support-package/pru-software-support-package.git
+```
+You shall have `pru-software-support-package` subfolder in LeptonPRU now.
+
+Setup dockcross helper script, run in LeptonPRU folder:
+```
+docker run --rm dockcross/linux-armv7 > ./dockcross
+chmod +x ./dockcross
+```
+This will take some time to download dockcross docker images for ARMv7 cross compilation.
+
+Run dockcross container in LeptonPRU folder:
+```
+./dockcross bash
+cd firmware
+PRU_CGT=/work/ti-cgt-pru_2.3.1 PRU_SP_PATH=/work/pru-software-support-package make
+```
+Note that the names of folders where you installed TI PRU tools, are passed to `make` via environment variables in command line. `/work` folder is that where you started dockcross command, LeptonPRU in current case.
+
+Exit dockcross and copy firmware/release/lepton-pru0.out and firmware/release/lepton-pru1.out to /lib/firmware/lepton-pru0-fw and /lib/firmware/lepton-pru1-fw on target Beaglebone.
+
 ### Building kernel module
 
 You need to install linux headers package:
