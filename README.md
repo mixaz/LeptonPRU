@@ -3,8 +3,7 @@
 Linux kernel device driver for FLIR Lepton 3 camera with SPI bit-banging on PRU 
 core.
 
-AM3358 TI SoC on Beaglebone Black (and its family) has 2 PRU cores, this driver uses 1 PRU to perform
-SPI bit-banging and Lepton VoSPI protocol handling, to not waste main ARM CPU resources.
+AM3358 TI SoC on Beaglebone Black (and its family) has 2 PRU cores, this driver uses 1 PRU core  to perform SPI bit-banging and Lepton VoSPI protocol handling, to not waste main ARM CPU resources.
 
 ## Building from source code
 
