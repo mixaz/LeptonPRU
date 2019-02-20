@@ -125,18 +125,18 @@ cd kernel
 
 ### Cross compiling kernel module
 
-Now we can cross compile the kernel module:
+Now we can cross compile the kernel module (also in leptonpru/dockcross session):
 ```
 cross-compile-module.sh 
 ```
 
 ### Cross compiling device tree
 
-If you need to build dtbo file as well, you need to cross compule DTC (Device Tree Compiler) first:
+If you need to build dtbo file as well, you need to cross compule DTC (Device Tree Compiler) first (also in leptonpru/dockcross session):
 ```
 cross-compile-dtc.sh
 ```
-Now you can compile dts file to dtbo binary:
+Now you can compile dts file to dtbo binary (also in leptonpru/dockcross session):
 ```
 cross-compile-overlay.sh
 ```
