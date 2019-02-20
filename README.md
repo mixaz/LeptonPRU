@@ -50,11 +50,15 @@ cd LeptonPRU/docker
 ./build_leptonpru.sh
 docker run leptonpru > ../leptonpru
 chmod +x ../leptonpru
+
 cd ..
 ./leptonpru bash
 cd firmware
 make
 ```
+
+It will take some time to download dockross docker images and PRU tools.
+
 Exit dockcross and copy firmware/release/lepton-pru0.out and firmware/release/lepton-pru1.out to /lib/firmware/lepton-pru0-fw and /lib/firmware/lepton-pru1-fw on target Beaglebone.
 
 
@@ -99,6 +103,44 @@ Now you can reboot:
 ```
 sudo shutdown now
 ```
+
+### Cross compiling kernel
+
+To cross compile the module you'll need kernel sources on host PC, for kernel revision used on target device (BBB). Though we do not need full kernel recompilation, we do need some files generated during kernel building.
+
+To build kernel we also need its configuration file taken from target device, located at /boot/config-$(uname -r).
+
+In LeptonPRU/kernel folder there's `cross-compile-kernel.sh` script which downloads kernel sources for given kernel revision, applies provided configuration file from target device, then builds the kernel. It can take not small time (but still shorter than building on BBB itself), fill you free to modify cross-compile-kernel.sh to speed up the process (ie using more cores instead `-j3` option, or enabling CCACHE).
+
+I assume you already have `LeptonPRU/leptonpru` script which starts dockcross docker container, if not - refer `cross compiling PRU firmware` section above. Since we do not need PRU tools to compile the kernel, original dockross container can be used as well.
+```
+cd LeptonPRU
+./leptonpru bash
+cd kernel
+./cross-compile-kernel.sh 4.9.36-ti-r45 ./config-4.9.36-ti-r45
+```
+4.9.36-ti-r45 is kernel version on my BBB, it's shown with `uname -r` command in ssh terminal.
+
+./config-4.9.36-ti-r45 is kernel configuration file located at /boot/config-4.9.36-ti-r45 on my BBB.
+
+### Cross compiling kernel module
+
+Now we can cross compile the kernel module:
+```
+cross-compile-module.sh 
+```
+
+### Cross compiling device tree
+
+If you need to build dtbo file as well, you need to cross compule DTC (Device Tree Compiler) first:
+```
+cross-compile-dtc.sh
+```
+Now you can compile dts file to dtbo binary:
+```
+cross-compile-overlay.sh
+```
+
 
 ## Testing LeptonPRU driver
 
