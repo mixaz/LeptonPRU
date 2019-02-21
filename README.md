@@ -111,7 +111,7 @@ To cross compile the module you'll need kernel sources on host PC, for kernel re
 
 To build kernel we also need its configuration file taken from target device, located at /boot/config-$(uname -r).
 
-In LeptonPRU/kernel folder there's `cross-compile-kernel.sh` script which downloads kernel sources for given kernel revision, applies provided configuration file from target device, then builds the kernel. It can take not small time (but still shorter than building on BBB itself), fill you free to modify cross-compile-kernel.sh to speed up the process (ie using more cores instead `-j3` option, or enabling CCACHE).
+In LeptonPRU/kernel folder there's `cross-compile-kernel.sh` script which downloads kernel sources for given kernel revision, applies provided configuration file from target device, then builds the kernel. It can take not small time (but still shorter than building on BBB itself), feel you free to modify cross-compile-kernel.sh to speed up the process (ie using more cores instead `-j3` option, or enabling CCACHE).
 
 I assume you already have `LeptonPRU/leptonpru` script which starts dockcross docker container, if not - refer `cross compiling PRU firmware` section above. Since we do not need PRU tools to compile the kernel, original dockross container can be used as well.
 ```
