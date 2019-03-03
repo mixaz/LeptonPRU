@@ -22,6 +22,7 @@ all:
 
 clean:
 	@make -C $(KSRC) M=$(PWD) ARCH=arm CROSS_COMPILE=$(XCC) clean
+	rm leptonpru-00A0.dtbo
 
 # Compile and install device tree
 overlay: leptonpru-00A0.dtbo
