@@ -13,6 +13,7 @@ all:
 
 clean:
 	@make -C $(KSRC) M=$(PWD) ARCH=arm CROSS_COMPILE=arm-linux-gnueabihf- clean
+	rm leptonpru-00A0.dtbo
 
 # Compile and install device tree
 overlay: leptonpru-00A0.dtbo
