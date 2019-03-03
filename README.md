@@ -104,6 +104,8 @@ It will take some time to download dockross docker images and PRU tools.
 
 Exit dockcross and copy firmware/release/lepton-pru0.out and firmware/release/lepton-pru1.out to /lib/firmware/lepton-pru0-fw and /lib/firmware/lepton-pru1-fw on target Beaglebone.
 
+Remark: `LeptonPRU/docker/Dockerfimage` uses dockcross armv7 image modified for ARMv7-A, not in mainline at the time of writing. PR for that submitted: https://github.com/dockcross/dockcross/pull/307
+
 
 ### Cross compiling kernel
 

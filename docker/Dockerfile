@@ -9,7 +9,7 @@
 # Free Software Foundation; either version 2 of the License, or (at your
 # option) any later version.
 
-FROM dockcross/linux-armv7
+FROM dockcross/linux-armv7a
 
 ENV DEFAULT_DOCKCROSS_IMAGE leptonpru
 
