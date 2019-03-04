@@ -237,6 +237,7 @@ sudo make deploy_service
 ```
 and then enable it:
 ```
+sudo systemctl daemon-reload
 sudo systemctl enable  enable-leptonpru-pins.service
 ```
 
