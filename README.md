@@ -83,68 +83,6 @@ Now you can reboot:
 sudo shutdown now
 ```
 
-## Cross compilation in dockross docker container
-
-### Cross compiling PRU firmware
-
-Dockcross provides docker images for ARM cross compilation https://github.com/dockcross/dockcross. There's `LeptonPRU/docker` folder to build an image with TI PRU tools preinstalled:
-```
-cd LeptonPRU/docker
-./build_leptonpru.sh
-docker run leptonpru > ../leptonpru
-chmod +x ../leptonpru
-
-cd ..
-./leptonpru bash
-cd firmware
-make
-```
-
-It will take some time to download dockross docker images and PRU tools.
-
-Exit dockcross and copy firmware/release/lepton-pru0.out and firmware/release/lepton-pru1.out to /lib/firmware/lepton-pru0-fw and /lib/firmware/lepton-pru1-fw on target Beaglebone.
-
-Remark: `LeptonPRU/docker/Dockerfimage` uses dockcross armv7 image modified for ARMv7-A, not in mainline at the time of writing. PR for that submitted: https://github.com/dockcross/dockcross/pull/307
-
-
-### Cross compiling kernel
-
-To cross compile the module you'll need kernel sources on host PC, for kernel revision used on target device (BBB). Though we do not need full kernel recompilation, we do need some files generated during kernel building.
-
-To build kernel we also need its configuration file taken from target device, located at /boot/config-$(uname -r).
-
-In LeptonPRU/kernel folder there's `cross-compile-kernel.sh` script which downloads kernel sources for given kernel revision, applies provided configuration file from target device, then builds the kernel. It can take not small time (but still shorter than building on BBB itself), feel you free to modify cross-compile-kernel.sh to speed up the process (ie using more cores instead `-j3` option, or enabling CCACHE).
-
-I assume you already have `LeptonPRU/leptonpru` script which starts dockcross docker container, if not - refer `cross compiling PRU firmware` section above. Since we do not need PRU tools to compile the kernel, original dockross container can be used as well.
-```
-cd LeptonPRU
-./leptonpru bash
-cd kernel
-./cross-compile-kernel.sh 4.9.36-ti-r45 ./config-4.9.36-ti-r45
-```
-4.9.36-ti-r45 is kernel version on my BBB, it's shown with `uname -r` command in ssh terminal.
-
-./config-4.9.36-ti-r45 is kernel configuration file located at /boot/config-4.9.36-ti-r45 on my BBB.
-
-### Cross compiling kernel module
-
-Now we can cross compile the kernel module (also in leptonpru/dockcross session):
-```
-cross-compile-module.sh 
-```
-leptonpru.ko file shall appear in current folder.
-
-### Cross compiling device tree file
-
-If you need to build dtbo file as well, you need to cross compule DTC (Device Tree Compiler) first (also in leptonpru/dockcross session):
-```
-cross-compile-dtc.sh
-```
-Now you can compile dts file to dtbo binary (also in leptonpru/dockcross session):
-```
-cross-compile-overlay.sh
-```
-
 ## Testing LeptonPRU driver
 
 Connect the Lepton module to BBB, currently the pins are hardcoded to 
@@ -156,7 +94,7 @@ Connect the Lepton module to BBB, currently the pins are hardcoded to
 
 Configure the pins, run in LeptonPRU/kernel:
 ```
-./pincfg.sh
+./enable-leptonpru_bbb-pins.sh
 ```
 
 Go to LeptonPRU/kernel folder and load the driver:
@@ -273,6 +211,96 @@ See LeptonThread.cpp for code related to the driver usage.
 
 	// release the driver
 	close(fd);
+```
+
+
+## Start LeptonPRU on bootup
+
+To load **leptonpru** kernel module on bootup you need to copy it in Linux drivers folder for example `/lib/modules/$(shell uname -r)/kernel/drivers/spi`. Or run
+```
+sudo make deploy_module
+```
+and add the module to `/etc/modules`, ie:
+```
+debian@beaglebone:~$ cat /etc/modules
+# /etc/modules: kernel modules to load at boot time.
+#
+# This file contains the names of kernel modules that should be loaded
+# at boot time, one per line. Lines beginning with "#" are ignored.
+
+leptonpru
+```
+
+To configure LeptonPRU pins at bootup time you can create a service, it will run `enable-leptonpru_bbb-pins.sh` (on BBB) or `enable-leptonpru_pb-pins.sh` (PB) on bootup time:
+```
+sudo make deploy_service
+```
+and then enable it:
+```
+sudo systemctl enable  enable-leptonpru-pins.service
+```
+
+
+## Cross compilation in dockross docker container
+
+### Cross compiling PRU firmware
+
+Dockcross provides docker images for ARM cross compilation https://github.com/dockcross/dockcross. There's `LeptonPRU/docker` folder to build an image with TI PRU tools preinstalled:
+```
+cd LeptonPRU/docker
+./build_leptonpru.sh
+docker run leptonpru > ../leptonpru
+chmod +x ../leptonpru
+
+cd ..
+./leptonpru bash
+cd firmware
+make
+```
+
+It will take some time to download dockross docker images and PRU tools.
+
+Exit dockcross and copy firmware/release/lepton-pru0.out and firmware/release/lepton-pru1.out to /lib/firmware/lepton-pru0-fw and /lib/firmware/lepton-pru1-fw on target Beaglebone.
+
+Remark: `LeptonPRU/docker/Dockerfimage` uses dockcross armv7 image modified for ARMv7-A, not in mainline at the time of writing. PR for that submitted: https://github.com/dockcross/dockcross/pull/307
+
+
+### Cross compiling kernel
+
+To cross compile the module you'll need kernel sources on host PC, for kernel revision used on target device (BBB). Though we do not need full kernel recompilation, we do need some files generated during kernel building.
+
+To build kernel we also need its configuration file taken from target device, located at /boot/config-$(uname -r).
+
+In LeptonPRU/kernel folder there's `cross-compile-kernel.sh` script which downloads kernel sources for given kernel revision, applies provided configuration file from target device, then builds the kernel. It can take not small time (but still shorter than building on BBB itself), feel you free to modify cross-compile-kernel.sh to speed up the process (ie using more cores instead `-j3` option, or enabling CCACHE).
+
+I assume you already have `LeptonPRU/leptonpru` script which starts dockcross docker container, if not - refer `cross compiling PRU firmware` section above. Since we do not need PRU tools to compile the kernel, original dockross container can be used as well.
+```
+cd LeptonPRU
+./leptonpru bash
+cd kernel
+./cross-compile-kernel.sh 4.9.36-ti-r45 ./config-4.9.36-ti-r45
+```
+4.9.36-ti-r45 is kernel version on my BBB, it's shown with `uname -r` command in ssh terminal.
+
+./config-4.9.36-ti-r45 is kernel configuration file located at /boot/config-4.9.36-ti-r45 on my BBB.
+
+### Cross compiling kernel module
+
+Now we can cross compile the kernel module (also in leptonpru/dockcross session):
+```
+cross-compile-module.sh 
+```
+leptonpru.ko file shall appear in current folder.
+
+### Cross compiling device tree file
+
+If you need to build dtbo file as well, you need to cross compule DTC (Device Tree Compiler) first (also in leptonpru/dockcross session):
+```
+cross-compile-dtc.sh
+```
+Now you can compile dts file to dtbo binary (also in leptonpru/dockcross session):
+```
+cross-compile-overlay.sh
 ```
 
 ## Some Additional info and links
