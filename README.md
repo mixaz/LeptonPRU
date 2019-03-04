@@ -3,8 +3,7 @@
 Linux kernel device driver for FLIR Lepton 3 camera with SPI bit-banging on PRU 
 core.
 
-AM3358 TI SoC on Beaglebone Black (and its family) has 2 PRU cores, this driver uses 1 PRU to perform
-SPI bit-banging and Lepton VoSPI protocol handling, to not waste main ARM CPU resources.
+AM3358 TI SoC on Beaglebone Black (and its family) has 2 PRU cores, this driver uses 1 PRU core  to perform SPI bit-banging and Lepton VoSPI protocol handling, to not waste main ARM CPU resources.
 
 ## Building from source code
 
@@ -82,6 +81,68 @@ It is enabled in BBB debian images by default AFAIK.
 Now you can reboot:
 ```
 sudo shutdown now
+```
+
+## Cross compilation in dockross docker container
+
+### Cross compiling PRU firmware
+
+Dockcross provides docker images for ARM cross compilation https://github.com/dockcross/dockcross. There's `LeptonPRU/docker` folder to build an image with TI PRU tools preinstalled:
+```
+cd LeptonPRU/docker
+./build_leptonpru.sh
+docker run leptonpru > ../leptonpru
+chmod +x ../leptonpru
+
+cd ..
+./leptonpru bash
+cd firmware
+make
+```
+
+It will take some time to download dockross docker images and PRU tools.
+
+Exit dockcross and copy firmware/release/lepton-pru0.out and firmware/release/lepton-pru1.out to /lib/firmware/lepton-pru0-fw and /lib/firmware/lepton-pru1-fw on target Beaglebone.
+
+Remark: `LeptonPRU/docker/Dockerfimage` uses dockcross armv7 image modified for ARMv7-A, not in mainline at the time of writing. PR for that submitted: https://github.com/dockcross/dockcross/pull/307
+
+
+### Cross compiling kernel
+
+To cross compile the module you'll need kernel sources on host PC, for kernel revision used on target device (BBB). Though we do not need full kernel recompilation, we do need some files generated during kernel building.
+
+To build kernel we also need its configuration file taken from target device, located at /boot/config-$(uname -r).
+
+In LeptonPRU/kernel folder there's `cross-compile-kernel.sh` script which downloads kernel sources for given kernel revision, applies provided configuration file from target device, then builds the kernel. It can take not small time (but still shorter than building on BBB itself), feel you free to modify cross-compile-kernel.sh to speed up the process (ie using more cores instead `-j3` option, or enabling CCACHE).
+
+I assume you already have `LeptonPRU/leptonpru` script which starts dockcross docker container, if not - refer `cross compiling PRU firmware` section above. Since we do not need PRU tools to compile the kernel, original dockross container can be used as well.
+```
+cd LeptonPRU
+./leptonpru bash
+cd kernel
+./cross-compile-kernel.sh 4.9.36-ti-r45 ./config-4.9.36-ti-r45
+```
+4.9.36-ti-r45 is kernel version on my BBB, it's shown with `uname -r` command in ssh terminal.
+
+./config-4.9.36-ti-r45 is kernel configuration file located at /boot/config-4.9.36-ti-r45 on my BBB.
+
+### Cross compiling kernel module
+
+Now we can cross compile the kernel module (also in leptonpru/dockcross session):
+```
+cross-compile-module.sh 
+```
+leptonpru.ko file shall appear in current folder.
+
+### Cross compiling device tree file
+
+If you need to build dtbo file as well, you need to cross compule DTC (Device Tree Compiler) first (also in leptonpru/dockcross session):
+```
+cross-compile-dtc.sh
+```
+Now you can compile dts file to dtbo binary (also in leptonpru/dockcross session):
+```
+cross-compile-overlay.sh
 ```
 
 ## Testing LeptonPRU driver

@@ -1,7 +1,7 @@
 /*
  * PRU1 Firmware for Lepton camera v3 driver
  *
- * Copyright (C) 2018 Mikhail Zemlyanukha <gmixaz@gmail.com>
+ * Copyright (C) 2018-2019 Mikhail Zemlyanukha <gmixaz@gmail.com>
  *
  * This file is a part of the LeptonPRU project
  *
