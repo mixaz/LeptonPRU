@@ -9,7 +9,7 @@ AM3358 TI SoC on Beaglebone Black (and its family) has 2 PRU cores, this driver 
 
 ### Prerequisites
 
-Install [BeagleLogic debian image](https://beaglelogic.readthedocs.io/en/latest/beaglelogic_system_image.html) with linux kernel 4.9. We will build on BBB, without cross-compiling.
+Install [BeagleLogic (BL) debian image](https://beaglelogic.readthedocs.io/en/latest/beaglelogic_system_image.html) with linux kernel 4.9. We will build on BBB, without cross-compiling.
 
 You may need to install build tools such as git and GCC, seems that they go with BL image by default.
 
@@ -94,7 +94,7 @@ Connect the Lepton module to BBB, currently the pins are hardcoded to
 
 Configure the pins, run in LeptonPRU/kernel:
 ```
-./enable-leptonpru_bbb-pins.sh
+./enable-leptonpru-pins.sh
 ```
 
 Go to LeptonPRU/kernel folder and load the driver:
@@ -231,7 +231,7 @@ debian@beaglebone:~$ cat /etc/modules
 leptonpru
 ```
 
-To configure LeptonPRU pins at bootup time you can create a service, it will run `enable-leptonpru_bbb-pins.sh` (on BBB) or `enable-leptonpru_pb-pins.sh` (PB) on bootup time:
+To configure LeptonPRU pins at bootup time you can create a service, it will run `enable-leptonpru-pins.sh` on bootup time:
 ```
 sudo make deploy_service
 ```
