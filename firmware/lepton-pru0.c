@@ -21,10 +21,15 @@
 
 #include "../include/leptonpru_int.h"
 
-//#define MOSI	15	//P8_11
-#define CLK	14	//P8_12
-#define MISO	5	//P9_27
-#define CS	2	//P9_30
+// Beaglebone Black
+//#define CLK	14	//P8_12
+//#define MISO	5	//P9_27
+//#define CS	2	//P9_30
+
+// PocketBeagle
+//#define CLK	3	//P2_30
+//#define MISO	6	//P2_28
+//#define CS	2	//P2_32
 
 /*
  * Define firmware version
