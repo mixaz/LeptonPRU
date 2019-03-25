@@ -231,6 +231,11 @@ debian@beaglebone:~$ cat /etc/modules
 leptonpru
 ```
 
+to update modules DB:
+```
+sudo depmod -a
+```
+
 To configure LeptonPRU pins at bootup time you can create a service, it will run `enable-leptonpru-pins.sh` on bootup time:
 ```
 sudo make deploy_service
