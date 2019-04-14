@@ -11,7 +11,7 @@
 all: leptonpru-test
 
 leptonpru-test: leptonpru-test.c ../library/libleptonpru.a
-	cc -o leptonpru-test leptonpru-test.c ../library/libleptonpru.a -I../include
+	$(CC) -o leptonpru-test leptonpru-test.c ../library/libleptonpru.a -I../include
 
 clean:
 	rm *.o leptonpru-test

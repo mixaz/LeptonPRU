@@ -11,10 +11,10 @@
 all: libleptonpru.a
 
 LeptonPruLib.o: LeptonPruLib.c ../include/LeptonPruLib.h
-	gcc -c LeptonPruLib.c -I../include
+	$(CC) -c LeptonPruLib.c -I../include
 
 libleptonpru.a: LeptonPruLib.o
-	ar rcs libleptonpru.a LeptonPruLib.o
+	$(AR) rcs libleptonpru.a LeptonPruLib.o
 
 clean:
 	rm *.o *.a

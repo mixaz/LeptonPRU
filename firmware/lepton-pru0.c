@@ -22,9 +22,9 @@
 #include "../include/leptonpru_int.h"
 
 // Beaglebone Black
-//#define CLK	14	//P8_12
-//#define MISO	5	//P9_27
-//#define CS	2	//P9_30
+#define CLK	14	//P8_12
+#define MISO	5	//P9_27
+#define CS	2	//P9_30
 
 // PocketBeagle
 //#define CLK	3	//P2_30
