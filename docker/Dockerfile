@@ -16,7 +16,7 @@ ENV DEFAULT_DOCKCROSS_IMAGE leptonpru
 ENV PRU_CGT=/usr/share/ti-cgt-pru_2.3.1 \
     PRU_SP_PATH=/usr/lib/ti/pru-software-support-package-5.1.0
 
-RUN apt-get install -y libc6-i386
+RUN apt-get install -y libc6-i386 lzop
 
 RUN curl -o pru-software-support-package_5.1.0.tar.gz -L https://github.com/bbvch/pru-software-support-package/archive/v5.1.0.tar.gz && \
     mkdir /usr/lib/ti && \
