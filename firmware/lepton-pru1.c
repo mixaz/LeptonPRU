@@ -13,9 +13,8 @@
 #include <stdint.h>
 #include "resource_table_1.h"
 
-//extern void asm_main();
-
 void main()
 {
-//        asm_main();
+    // PRU1 is not used
+    __halt();
 }
