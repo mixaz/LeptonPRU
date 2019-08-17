@@ -339,6 +339,7 @@ Some useful links just in case:
 
 * [FLIR Lepton Engineering Datasheet](docs/flir-lepton-engineering-datasheet.pdf)
 * [FLIR Lepton 2 vs Lepton 3](docs/lepton-vs-lepton-3-app-note.pdf)
+* [TI PRU Training, LAB 5](http://processors.wiki.ti.com/index.php/PRU_Training:_Hands-on_Labs#LAB_5:_RPMsg_Communication_between_ARM_and_PRU)
 * [BeagleLogic: Building a logic analyzer with the PRUs](http://theembeddedkitchen.net/beaglelogic-building-a-logic-analyzer-with-the-prus-part-1/449)
 * [BeagleLogic at github](https://github.com/abhishek-kakkar/BeagleLogic)
 * [Ti AM33XX PRUSSv2 on eLinux.org](https://elinux.org/Ti_AM33XX_PRUSSv2)
