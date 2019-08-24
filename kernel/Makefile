@@ -17,10 +17,13 @@ DTC ?= /usr/bin/dtc
 DRIVERS_SPI ?= /lib/modules/$(shell uname -r)/kernel/drivers/spi
 
 # Module targets (run from host)
-obj-m := leptonpru.o
+obj-m := leptonpru_out.o
+leptonpru_out-objs :=  leptonpru.o prussdrv.o
 
 # LeptonPRU include files
-EXTRA_CFLAGS=-I$(PWD)/../include
+EXTRA_CFLAGS = -I$(PWD)/../include -I$(PWD)/../am335x_pru_package/pru_sw/app_loader/include
+
+# -L$(PWD)/../am335x_pru_package/pru_sw/app_loader/lib -lprussdrv.a
 
 all:
 	@make -C $(KSRC) M=$(PWD) ARCH=arm CROSS_COMPILE=$(XCC) modules

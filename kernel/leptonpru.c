@@ -1,6 +1,5 @@
 /*
  * Kernel module for IR camera FLIR Lepton using SPI bit-banging on PRU core
- * Designed to be used in conjunction with a modified pru_rproc driver.
  *
  * This file is a part of the LeptonPRU project.
  *
@@ -23,8 +22,12 @@
 #include <linux/poll.h>
 
 #include <linux/platform_device.h>
-#include <linux/pruss.h>
-#include <linux/remoteproc.h>
+
+//#include <linux/pruss.h>
+//#include <linux/remoteproc.h>
+#include <prussdrv.h>
+#include <pruss_intc_mapping.h>
+
 #include <linux/miscdevice.h>
 
 #include <linux/io.h>
@@ -51,6 +54,11 @@
 
 #define USE_PRUS 1
 
+#define PRUSS_NUM_PRUS 2
+#define PRU_NUM 0		// define which pru is used
+#define SHM_OFFSET 2048		// http://www.embedded-things.com/bbb/understanding-bbb-pru-shared-memory-access/
+
+
 /* Buffer states */
 enum bufstates {
 	STATE_BL_BUF_ALLOC,
@@ -70,19 +78,9 @@ struct logic_buffer {
 	unsigned short read_state;
 };
 
-struct beaglelogic_private_data {
-	const char *fw_names[PRUSS_NUM_PRUS];
-};
-
 struct beaglelogicdev {
 	/* Misc device descriptor */
 	struct miscdevice miscdev;
-
-	/* Handle to pruss structure and PRU0 SRAM */
-	struct pruss *pruss;
-	struct rproc *pru0, *pru1;
-	struct pruss_mem_region pru0sram;
-	const struct beaglelogic_private_data *fw_data;
 
 	/* IRQ numbers */
 	int to_bl_irq;
@@ -102,7 +100,7 @@ struct beaglelogicdev {
 	/* ISR Bookkeeping */
 	uint32_t previntcount;	/* Previous interrupt count read from PRU */
 
-	/* Firmware capabilities */
+	/* Handle to pruss structure and PRU0 SRAM */
 	struct capture_context *cxt_pru;
 
 	/* State */
@@ -118,7 +116,47 @@ struct logic_buffer_reader {
 		struct beaglelogicdev, miscdev)
 
 #define DRV_NAME		"leptonpru"
-#define DRV_VERSION		"0.2"
+#define DRV_VERSION		"0.3"
+
+static int pru_init(void)
+{
+	tpruss_intc_initdata pruss_intc_initdata = PRUSS_INTC_INITDATA;
+	prussdrv_init();
+	if (prussdrv_open(PRU_EVTOUT_0))
+	{
+		return -1;
+	}
+	prussdrv_pruintc_init(&pruss_intc_initdata);
+	return 0;
+}
+
+static void pru_load(int pru_num, char* datafile, char* codefile)
+{
+	// load datafile in PRU memory
+	prussdrv_load_datafile(pru_num, datafile);
+	// load and execute codefile in PRU
+	prussdrv_exec_program(pru_num, codefile);
+}
+
+static void pru_stop(int pru_num)
+{
+	prussdrv_pru_disable(pru_num);
+	prussdrv_exit();
+}
+
+static volatile int32_t* init_prumem(void)
+{
+	volatile int32_t* p;
+    	int ret;
+	ret = prussdrv_map_prumem(PRUSS0_SHARED_DATARAM, (void**)&p);
+    	if(ret != 0) {
+        	return NULL;
+    	}
+	return p+SHM_OFFSET;
+}
+
+
+
 
 /* Begin Buffer Management section */
 
@@ -286,7 +324,7 @@ static void beaglelogic_request_stop(struct beaglelogicdev *bldev)
 	struct device *dev = bldev->miscdev.this_device;
 	dev_info(dev, "beaglelogic_request_stop\n");
 	/* Trigger interrupt */
-	pruss_intc_trigger(bldev->to_bl_irq);
+//	pruss_intc_trigger(bldev->to_bl_irq);
 	beaglelogic_send_cmd(bldev,CMD_STOP);
 }
 
@@ -714,7 +752,6 @@ static int beaglelogic_probe(struct platform_device *pdev)
 		goto fail;
 	}
 
-	bldev->fw_data = match->data;
 	bldev->miscdev.fops = &pru_beaglelogic_fops;
 	bldev->miscdev.minor = MISC_DYNAMIC_MINOR;
 	bldev->miscdev.mode = S_IRUGO | S_IWUGO;
@@ -727,35 +764,12 @@ static int beaglelogic_probe(struct platform_device *pdev)
 	/* Get a handle to the PRUSS structures */
 	dev = &pdev->dev;
 
-	bldev->pruss = pruss_get(dev, NULL);
-	if (IS_ERR(bldev->pruss)) {
-		ret = PTR_ERR(bldev->pruss);
-		if (ret != -EPROBE_DEFER)
-			dev_err(dev, "Unable to get pruss handle.\n");
+	// initialize the PRU
+	ret = pru_init();
+	printk("pruss_uio driver init\n");
+	if (ret != 0) {
+		dev_err(dev, "Unable to init pruss, err=%i\n",ret);
 		goto fail_free;
-	}
-
-	bldev->pru0 = pruss_rproc_get(bldev->pruss, PRUSS_PRU0);
-	if (IS_ERR(bldev->pru0)) {
-		ret = PTR_ERR(bldev->pru0);
-		if (ret != -EPROBE_DEFER)
-			dev_err(dev, "Unable to get PRU0.\n");
-		goto fail_pruss_put;
-	}
-
-	bldev->pru1 = pruss_rproc_get(bldev->pruss, PRUSS_PRU1);
-	if (IS_ERR(bldev->pru1)) {
-		ret = PTR_ERR(bldev->pru1);
-		if (ret != -EPROBE_DEFER)
-			dev_err(dev, "Unable to get PRU0.\n");
-		goto fail_pru0_put;
-	}
-
-	ret = pruss_request_mem_region(bldev->pruss, PRUSS_MEM_DRAM0,
-		&bldev->pru0sram);
-	if (ret) {
-		dev_err(dev, "Unable to get PRUSS RAM.\n");
-		goto fail_putmem;
 	}
 
 	/* Get interrupts and install interrupt handlers */
@@ -763,62 +777,49 @@ static int beaglelogic_probe(struct platform_device *pdev)
 	if (bldev->from_bl_irq_1 <= 0) {
 		ret = bldev->from_bl_irq_1;
 		if (ret == -EPROBE_DEFER)
-			goto fail_putmem;
+			goto fail_exit_prus;
 	}
 	bldev->from_bl_irq_2 = platform_get_irq_byname(pdev, "from_lepton_2");
 	if (bldev->from_bl_irq_2 <= 0) {
 		ret = bldev->from_bl_irq_2;
 		if (ret == -EPROBE_DEFER)
-			goto fail_putmem;
+			goto fail_exit_prus;
 	}
 	bldev->to_bl_irq = platform_get_irq_byname(pdev, "to_lepton");
 	if (bldev->to_bl_irq<= 0) {
 		ret = bldev->to_bl_irq;
 		if (ret == -EPROBE_DEFER)
-			goto fail_putmem;
+			goto fail_exit_prus;
 	}
 
 	ret = request_irq(bldev->from_bl_irq_1, beaglelogic_serve_irq,
 		IRQF_ONESHOT, dev_name(dev), bldev);
-	if (ret) goto fail_putmem;
+	if (ret) goto fail_exit_prus;
 
 	ret = request_irq(bldev->from_bl_irq_2, beaglelogic_serve_irq,
 		IRQF_ONESHOT, dev_name(dev), bldev);
 	if (ret) goto fail_free_irq1;
-
-	/* Set firmware and boot the PRUs */
-	ret = rproc_set_firmware(bldev->pru0, bldev->fw_data->fw_names[0]);
-	if (ret) {
-		dev_err(dev, "Failed to set PRU0 firmware %s: %d\n",
-			bldev->fw_data->fw_names[0], ret);
-		goto fail_free_irqs;
-	}
-
-	ret = rproc_set_firmware(bldev->pru1, bldev->fw_data->fw_names[1]);
-	if (ret) {
-		dev_err(dev, "Failed to set PRU1 firmware %s: %d\n",
-			bldev->fw_data->fw_names[1], ret);
-		goto fail_free_irqs;
-	}
-
-	ret = rproc_boot(bldev->pru0);
-	if (ret) {
-		dev_err(dev, "Failed to boot PRU0: %d\n", ret);
-		goto fail_free_irqs;
-	}
-
-	ret = rproc_boot(bldev->pru1);
-	if (ret) {
-		dev_err(dev, "Failed to boot PRU1: %d\n", ret);
-		goto fail_shutdown_pru0;
-	}
 	
+	// load and execute codefile in PRU
+	ret = prussdrv_exec_program(PRU_NUM, "lepton-pru0-fw");
+	if (ret != 0) {
+		dev_err(dev, "prussdrv_exec_program failed, err=%i\n",ret);
+		goto fail_free_irqs;
+	}
+
+	/* Capture context structure is at location 0000h in PRU0 SRAM */
+	bldev->cxt_pru = (struct capture_context *) init_prumem();
+	if(bldev->cxt_pru == NULL) {
+		dev_err(dev, "can't locate PRUSS shared data RAM\n");
+		goto fail_shutdown_prus;
+	}
+
 	printk("Lepton PRU loaded and initializing\n");
 
 	/* Once done, register our misc device and link our private data */
 	ret = misc_register(&bldev->miscdev);
 	if (ret)
-		goto fail_shutdown_prus;
+		goto fail_map_prus;
 	dev = bldev->miscdev.this_device;
 	dev_set_drvdata(dev, bldev);
 
@@ -829,12 +830,8 @@ static int beaglelogic_probe(struct platform_device *pdev)
 	/* Power on in disabled state */
 	bldev->state = STATE_BL_DISABLED;
 	
-	/* Capture context structure is at location 0000h in PRU0 SRAM */
-	bldev->cxt_pru = bldev->pru0sram.va + 0;
-
 	if (bldev->cxt_pru->magic == FW_MAGIC)
-		dev_info(dev, "Valid PRU capture context structure "\
-				"found at offset %04X\n", 0);
+		dev_info(dev, "Valid PRU capture context structure found\n");
 	else {
 		dev_err(dev, "Firmware error!\n");
 		goto faildereg;
@@ -850,19 +847,10 @@ static int beaglelogic_probe(struct platform_device *pdev)
 		goto faildereg;
 	}
 	
-	/* Apply default configuration first */
-//	bldev->bufunitsize = 4 * 1024 * 1024;
-//	bldev->triggerflags = 0;
-
-	/* Override defaults with the device tree */
-//	if (!of_property_read_u32(node, "triggerflags", &val))
-//		if (beaglelogic_set_triggerflags(dev, val))
-//			dev_warn(dev, "Invalid default triggerflags\n");
-
 	/* We got configuration from PRUs, now mark device init'd */
 	bldev->state = STATE_BL_INITIALIZED;
 
-        beaglelogic_memalloc(dev);
+	beaglelogic_memalloc(dev);
 	beaglelogic_map_and_submit_all_buffers(dev);
 	
 	/* Display our init'ed state */
@@ -871,29 +859,24 @@ static int beaglelogic_probe(struct platform_device *pdev)
 	/* Once done, create device files */
 	ret = sysfs_create_group(&dev->kobj, &beaglelogic_attr_group);
 	if (ret) {
-		dev_err(dev, "Registration failed.\n");
+		dev_err(dev, "sysfs registration failed\n");
 		goto faildereg;
 	}
 
 	return 0;
+    
 faildereg:
 	misc_deregister(&bldev->miscdev);
+fail_map_prus:
+	prussdrv_pru_disable(PRU_NUM);
 fail_shutdown_prus:
-	rproc_shutdown(bldev->pru1);
-fail_shutdown_pru0:
-	rproc_shutdown(bldev->pru0);
+	pru_stop(PRU_NUM);
 fail_free_irqs:
 	free_irq(bldev->from_bl_irq_2, bldev);
 fail_free_irq1:
 	free_irq(bldev->from_bl_irq_1, bldev);
-fail_putmem:
-	if (bldev->pru0sram.va)
-		pruss_release_mem_region(bldev->pruss, &bldev->pru0sram);
-	pruss_rproc_put(bldev->pruss, bldev->pru1);
-fail_pru0_put:
-	pruss_rproc_put(bldev->pruss, bldev->pru0);
-fail_pruss_put:
-	pruss_put(bldev->pruss);
+fail_exit_prus:
+	prussdrv_exit();
 fail_free:
 	kfree(bldev);
 fail:
@@ -905,8 +888,12 @@ static int beaglelogic_remove(struct platform_device *pdev)
 	struct beaglelogicdev *bldev = platform_get_drvdata(pdev);
 	struct device *dev = bldev->miscdev.this_device;
 
-	/* Free all buffers */
-	beaglelogic_memfree(dev);
+	/* Shutdown the PRUs */
+	pru_stop(PRU_NUM);
+
+	/* Free IRQs */
+	free_irq(bldev->from_bl_irq_2, bldev);
+	free_irq(bldev->from_bl_irq_1, bldev);
 
 	/* Remove the sysfs attributes */
 	sysfs_remove_group(&dev->kobj, &beaglelogic_attr_group);
@@ -914,19 +901,8 @@ static int beaglelogic_remove(struct platform_device *pdev)
 	/* Deregister the misc device */
 	misc_deregister(&bldev->miscdev);
 
-	/* Shutdown the PRUs */
-	rproc_shutdown(bldev->pru1);
-	rproc_shutdown(bldev->pru0);
-
-	/* Free IRQs */
-	free_irq(bldev->from_bl_irq_2, bldev);
-	free_irq(bldev->from_bl_irq_1, bldev);
-
-	/* Release handles to PRUSS memory regions */
-	pruss_release_mem_region(bldev->pruss, &bldev->pru0sram);
-	pruss_rproc_put(bldev->pruss, bldev->pru1);
-	pruss_rproc_put(bldev->pruss, bldev->pru0);
-	pruss_put(bldev->pruss);
+	/* Free all buffers */
+	beaglelogic_memfree(dev);
 
 	/* Free up memory */
 	kfree(bldev);
@@ -936,13 +912,8 @@ static int beaglelogic_remove(struct platform_device *pdev)
 	return 0;
 }
 
-static struct beaglelogic_private_data beaglelogic_pdata = {
-	.fw_names[0] = "lepton-pru0-fw",
-	.fw_names[1] = "lepton-pru1-fw",
-};
-
 static const struct of_device_id beaglelogic_dt_ids[] = {
-	{ .compatible = "leptonpru,leptonpru", .data = &beaglelogic_pdata, },
+	{ .compatible = "leptonpru,leptonpru" },
 	{ /* sentinel */ },
 };
 MODULE_DEVICE_TABLE(of, beaglelogic_dt_ids);
