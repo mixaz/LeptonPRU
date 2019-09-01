@@ -762,7 +762,7 @@ static int beaglelogic_probe(struct platform_device *pdev)
 		&bldev->pru0sram);
 	if (ret) {
 		dev_err(dev, "Unable to get PRUSS RAM.\n");
-		goto fail_putmem;
+		goto fail_pruss_put;
 	}
 
 	/* Get interrupts and install interrupt handlers */
@@ -907,9 +907,6 @@ static int beaglelogic_remove(struct platform_device *pdev)
 	struct beaglelogicdev *bldev = platform_get_drvdata(pdev);
 	struct device *dev = bldev->miscdev.this_device;
 
-	/* Free all buffers */
-	beaglelogic_memfree(dev);
-
 	/* Remove the sysfs attributes */
 	sysfs_remove_group(&dev->kobj, &beaglelogic_attr_group);
 
@@ -929,6 +926,9 @@ static int beaglelogic_remove(struct platform_device *pdev)
 	pru_rproc_put(bldev->pru1);
 	pru_rproc_put(bldev->pru0);
 	pruss_put(bldev->pruss);
+
+	/* Free all buffers */
+	beaglelogic_memfree(dev);
 
 	/* Free up memory */
 	kfree(bldev);

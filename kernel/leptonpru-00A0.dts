@@ -12,12 +12,12 @@
 /* 
  * On PocketBeagle PRUSS is disabled in DT, so enable it first
  */
- /*
+ 
 / {
 	compatible = "ti,beaglebone", "ti,beaglebone-black", "ti,beaglebone-green";
 
 	// identification
-	part-number = "AM335X-PRU-RPROC-4-9-TI";
+	part-number = "AM335X-PRU-RPROC-4-14-TI";
 	version = "00A0";
 
 	fragment@0 {
@@ -25,21 +25,22 @@
 		__overlay__ {
 
 			ocp {
-				pruss_soc_bus: pruss_soc_bus@4a326000 {
+
+				pruss_soc_bus: pruss_soc_bus@4a326004 {
 					status = "okay";
 
-					pruss: pruss@4a300000 {
+					pruss@0 {
 						status = "okay";
 
-						pruss_intc: intc@4a320000 {
+						intc@20000 {
 						        status = "okay";
 						};
 
-						pru0: pru@4a334000 {
+						pru@34000 {
 							status = "okay";
 						};
 
-						pru1: pru@4a338000 {
+						pru@38000 {
 							status = "okay";
 						};
 
@@ -48,11 +49,12 @@
 						};
 					};
 				};
+
 			};
 		};
 	};
 };
-*/
+
 /* 
  * LeptonPRU configuration
  */
