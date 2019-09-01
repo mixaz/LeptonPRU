@@ -12,6 +12,7 @@
 /* 
  * On PocketBeagle PRUSS is disabled in DT, so enable it first
  */
+ /*
 / {
 	compatible = "ti,beaglebone", "ti,beaglebone-black", "ti,beaglebone-green";
 
@@ -51,7 +52,7 @@
 		};
 	};
 };
-
+*/
 /* 
  * LeptonPRU configuration
  */
@@ -67,9 +68,11 @@
 		__overlay__ {
 			/* Add default settings */
 			pru-lepton {
-				compatible = "leptonpru,leptonpru";
+				compatible = "take4aps,leptonpru";
 
-				pruss = <&pruss>;
+				prus = <&pru0>, <&pru1>;
+				firmware-name = "lepton-pru0-fw", "lepton-pru1-fw";
+
 				interrupt-parent = <&pruss_intc>;
 				interrupts = <22>, <23>, <24>;
 				interrupt-names = "from_lepton_1", "to_lepton", "from_lepton_2";

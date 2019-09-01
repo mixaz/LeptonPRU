@@ -704,12 +704,15 @@ static int beaglelogic_probe(struct platform_device *pdev)
 		return -ENODEV; /* No support for non-DT platforms */
 
 	match = of_match_device(beaglelogic_dt_ids, &pdev->dev);
-	if (!match)
+	if (!match) {
+		printk("LeptonPRU: DT node not found\n");
 		return -ENODEV;
+	}
 
 	/* Allocate memory for our private structure */
 	bldev = kzalloc(sizeof(*bldev), GFP_KERNEL);
 	if (!bldev) {
+		printk("LeptonPRU: can't allocate mem\n");
 		ret = -1;
 		goto fail;
 	}
@@ -727,28 +730,32 @@ static int beaglelogic_probe(struct platform_device *pdev)
 	/* Get a handle to the PRUSS structures */
 	dev = &pdev->dev;
 
-	bldev->pruss = pruss_get(dev, NULL);
+	printk("LeptonPRU: getting rproc for prus\n");
+	bldev->pru0 = pru_rproc_get(node, 0);
+	if (IS_ERR(bldev->pru0)) {
+		ret = PTR_ERR(bldev->pru0);
+		printk("LeptonPRU: remoteproc for PRU0 fails, err=%d\n",ret);
+		bldev->pru0 = NULL;
+		if (ret != -EPROBE_DEFER)
+			dev_err(dev, "unable to get PRU0: %d\n", ret);
+		goto fail_free;
+	}
+	bldev->pru1 = pru_rproc_get(node, 1);
+	if (IS_ERR(bldev->pru1)) {
+		printk("LeptonPRU: remoteproc for PRU1 fails\n");
+		ret = PTR_ERR(bldev->pru1);
+		bldev->pru1 = NULL;
+		if (ret != -EPROBE_DEFER)
+			dev_err(dev, "unable to get PRU1: %d\n", ret);
+		goto fail_put_pru0;
+	}
+
+	bldev->pruss = pruss_get(bldev->pru0);
 	if (IS_ERR(bldev->pruss)) {
 		ret = PTR_ERR(bldev->pruss);
 		if (ret != -EPROBE_DEFER)
 			dev_err(dev, "Unable to get pruss handle.\n");
-		goto fail_free;
-	}
-
-	bldev->pru0 = pruss_rproc_get(bldev->pruss, PRUSS_PRU0);
-	if (IS_ERR(bldev->pru0)) {
-		ret = PTR_ERR(bldev->pru0);
-		if (ret != -EPROBE_DEFER)
-			dev_err(dev, "Unable to get PRU0.\n");
-		goto fail_pruss_put;
-	}
-
-	bldev->pru1 = pruss_rproc_get(bldev->pruss, PRUSS_PRU1);
-	if (IS_ERR(bldev->pru1)) {
-		ret = PTR_ERR(bldev->pru1);
-		if (ret != -EPROBE_DEFER)
-			dev_err(dev, "Unable to get PRU0.\n");
-		goto fail_pru0_put;
+		goto fail_put_pru1;
 	}
 
 	ret = pruss_request_mem_region(bldev->pruss, PRUSS_MEM_DRAM0,
@@ -787,6 +794,7 @@ static int beaglelogic_probe(struct platform_device *pdev)
 	if (ret) goto fail_free_irq1;
 
 	/* Set firmware and boot the PRUs */
+/*
 	ret = rproc_set_firmware(bldev->pru0, bldev->fw_data->fw_names[0]);
 	if (ret) {
 		dev_err(dev, "Failed to set PRU0 firmware %s: %d\n",
@@ -800,6 +808,7 @@ static int beaglelogic_probe(struct platform_device *pdev)
 			bldev->fw_data->fw_names[1], ret);
 		goto fail_free_irqs;
 	}
+*/
 
 	ret = rproc_boot(bldev->pru0);
 	if (ret) {
@@ -843,26 +852,17 @@ static int beaglelogic_probe(struct platform_device *pdev)
 	/* Get firmware properties */
 	ret = beaglelogic_send_cmd(bldev, CMD_GET_VERSION);
 	if (ret != 0) {
-		dev_info(dev, "BeagleLogic PRU Firmware version: %d.%d\n",
+		dev_info(dev, "LeptonPRU PRU Firmware version: %d.%d\n",
 				ret >> 8, ret & 0xFF);
 	} else {
 		dev_err(dev, "Firmware error!\n");
 		goto faildereg;
 	}
 	
-	/* Apply default configuration first */
-//	bldev->bufunitsize = 4 * 1024 * 1024;
-//	bldev->triggerflags = 0;
-
-	/* Override defaults with the device tree */
-//	if (!of_property_read_u32(node, "triggerflags", &val))
-//		if (beaglelogic_set_triggerflags(dev, val))
-//			dev_warn(dev, "Invalid default triggerflags\n");
-
 	/* We got configuration from PRUs, now mark device init'd */
 	bldev->state = STATE_BL_INITIALIZED;
 
-        beaglelogic_memalloc(dev);
+       beaglelogic_memalloc(dev);
 	beaglelogic_map_and_submit_all_buffers(dev);
 	
 	/* Display our init'ed state */
@@ -876,6 +876,7 @@ static int beaglelogic_probe(struct platform_device *pdev)
 	}
 
 	return 0;
+    
 faildereg:
 	misc_deregister(&bldev->miscdev);
 fail_shutdown_prus:
@@ -888,12 +889,13 @@ fail_free_irq1:
 	free_irq(bldev->from_bl_irq_1, bldev);
 fail_putmem:
 	if (bldev->pru0sram.va)
-		pruss_release_mem_region(bldev->pruss, &bldev->pru0sram);
-	pruss_rproc_put(bldev->pruss, bldev->pru1);
-fail_pru0_put:
-	pruss_rproc_put(bldev->pruss, bldev->pru0);
+	    pruss_release_mem_region(bldev->pruss, &bldev->pru0sram);
 fail_pruss_put:
 	pruss_put(bldev->pruss);
+fail_put_pru1:
+	pru_rproc_put(bldev->pru1);
+fail_put_pru0:
+	pru_rproc_put(bldev->pru0);
 fail_free:
 	kfree(bldev);
 fail:
@@ -924,8 +926,8 @@ static int beaglelogic_remove(struct platform_device *pdev)
 
 	/* Release handles to PRUSS memory regions */
 	pruss_release_mem_region(bldev->pruss, &bldev->pru0sram);
-	pruss_rproc_put(bldev->pruss, bldev->pru1);
-	pruss_rproc_put(bldev->pruss, bldev->pru0);
+	pru_rproc_put(bldev->pru1);
+	pru_rproc_put(bldev->pru0);
 	pruss_put(bldev->pruss);
 
 	/* Free up memory */
@@ -936,13 +938,8 @@ static int beaglelogic_remove(struct platform_device *pdev)
 	return 0;
 }
 
-static struct beaglelogic_private_data beaglelogic_pdata = {
-	.fw_names[0] = "lepton-pru0-fw",
-	.fw_names[1] = "lepton-pru1-fw",
-};
-
 static const struct of_device_id beaglelogic_dt_ids[] = {
-	{ .compatible = "leptonpru,leptonpru", .data = &beaglelogic_pdata, },
+	{ .compatible = "take4aps,leptonpru", },
 	{ /* sentinel */ },
 };
 MODULE_DEVICE_TABLE(of, beaglelogic_dt_ids);
