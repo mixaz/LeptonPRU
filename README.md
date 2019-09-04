@@ -352,6 +352,7 @@ Some useful links just in case:
 * [QT4 cross-compiling for BBB](https://github.com/yongli-aus/qt-4.8.6-cross-compile-for-beaglebone-black)
 * [Beagleboard:Expanding File System Partition On A microSD](https://elinux.org/Beagleboard:Expanding_File_System_Partition_On_A_microSD)
 * [Using Device Trees To Configure PRU IO Pins](http://www.ofitselfso.com/BeagleNotes/UsingDeviceTreesToConfigurePRUIOPins.php)
+* [TESTCape. Understanding the Device Tree (PART I)](http://papermint-designs.com/community/node/391)
 * [Simple MMAP implementation for Linux driver](https://stackoverflow.com/a/45645732/1028256)
 * [Add X11 to a BeagleBone IoT image](https://gist.github.com/jadonk/39d0fcfc323347d88e995cdfee02bdad)
 
