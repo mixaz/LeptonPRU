@@ -22,9 +22,9 @@
 #include "../include/leptonpru_int.h"
 
 // Beaglebone Black
-#define CLK	14	//P8_12
-#define MISO	5	//P9_27
-#define CS	2	//P9_30
+//#define CLK	14	//P8_12
+//#define MISO	5	//P9_27
+//#define CS	2	//P9_30
 
 // PocketBeagle
 //#define CLK	3	//P2_30
@@ -62,16 +62,20 @@ static uint16_t spi_read16()
 	uint8_t i;
 	uint16_t miso;
 
+       uint8_t pCLK = (uint8_t)cxt.pin_CLK;
+       uint8_t pMISO = (uint8_t)cxt.pin_MISO;
+       uint8_t pCS = (uint8_t)cxt.pin_CS;
+
 	miso = 0x0;
 	
 	for (i = 0; i < 16; i++) {
 		miso <<= 1;
-		SET_PIN(CLK,0);
+		SET_PIN(pCLK,0);
 		__delay_cycles(10);
-		SET_PIN(CLK,1);
+		SET_PIN(pCLK,1);
 		__delay_cycles(2);
 		
-		if (CHECK_PIN(MISO))
+		if (CHECK_PIN(pMISO))
 			miso |= 0x01;
 		else
 			miso &= ~0x01;
@@ -88,18 +92,22 @@ static int configure_capture() {
  * reset CS for 200ms to resync
  */
 static void resync() {
+	uint8_t pCLK = (uint8_t)cxt.pin_CLK;
+	uint8_t pMISO = (uint8_t)cxt.pin_MISO;
+	uint8_t pCS = (uint8_t)cxt.pin_CS;
+	
 	cxt.resync_counter++;
 	// CS high to disable lepton
-	SET_PIN(CS, 1);
+	SET_PIN(pCS, 1);
 	// CLK high for idle
-	SET_PIN(CLK, 1);
+	SET_PIN(pCLK, 1);
 	__delay_cycles(40000000L);
 	// set CS low on active
-	SET_PIN(CS,0);
+	SET_PIN(pCS,0);
 	// wait a bit before we start CLK
 	__delay_cycles(100L);
 	
-	SET_PIN(CLK, 0);
+	SET_PIN(pCLK, 0);
 }
 
 /* looks for 0x0fff 0xffff 0x0000 pattern */
@@ -108,15 +116,19 @@ static uint32_t wait_FFF_FFFF_0000(uint32_t maxBits) {
 	uint32_t cnt1111,cnt0000;
 	uint32_t bits = 0;
 	
+	uint8_t pCLK = (uint8_t)cxt.pin_CLK;
+	uint8_t pMISO = (uint8_t)cxt.pin_MISO;
+	uint8_t pCS = (uint8_t)cxt.pin_CS;
+	
 	cnt1111 = cnt0000 = 0;
 	
 	while((cnt1111 < 12+16 || cnt0000 < 16) && bits < maxBits) {
 		
-		SET_PIN(CLK,0);
+		SET_PIN(pCLK,0);
 		__delay_cycles(20);
 		
-		SET_PIN(CLK,1);
-		if (CHECK_PIN(MISO)) {
+		SET_PIN(pCLK,1);
+		if (CHECK_PIN(pMISO)) {
 			if(cnt0000) {
 				cnt1111 = 0;
 				cnt0000 = 0;
@@ -309,6 +321,8 @@ static int handle_command(uint32_t cmd) {
 
 void main()
 {
+	uint8_t pCS;
+	
 	/* Enable OCP Master Port */
 	CT_CFG.SYSCFG_bit.STANDBY_INIT = 0;
 	cxt.magic = FW_MAGIC;
@@ -381,9 +395,10 @@ void main()
 			sync_discard_packet();
 		}
 		else if (state_run == 2) {
+			pCS = (uint8_t)cxt.pin_CS;
 			state_run = 0;
 			// disable CS
-			SET_PIN(CS,1);
+			SET_PIN(pCS,1);
 			/* Clear all pending interrupts */
 			CT_INTC.SECR0 = 0xFFFFFFFF;
 			// allow some time for ARM to prepare for SYSEV_PRU0_TO_ARM_B handling

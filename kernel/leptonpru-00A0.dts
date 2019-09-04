@@ -26,7 +26,7 @@
 
 			ocp {
 
-				pruss_soc_bus: pruss_soc_bus@4a326004 {
+				pruss_soc_bus@4a326004 {
 					status = "okay";
 
 					pruss@0 {
@@ -44,7 +44,7 @@
 							status = "okay";
 						};
 
-						pruss_mdio: mdio@4a332400 {
+						mdio@4a332400 {
 							status = "disabled";
 						};
 					};
@@ -64,7 +64,6 @@
 	// identification
 	part-number = "LEPTONPRU";
 	version = "00A0";
-
 	fragment@0 {
 		target-path="/";
 		__overlay__ {
@@ -78,8 +77,62 @@
 				interrupt-parent = <&pruss_intc>;
 				interrupts = <22>, <23>, <24>;
 				interrupt-names = "from_lepton_1", "to_lepton", "from_lepton_2";
+
+				/* pin muxing */
+                                pinctrl-names = "default";
+                                /* for BBB */
+				pinctrl-0 = <&P8_12_pruout_pin &P9_27_pruin_pin &P9_30_pruin_pin>;
+				
+                                /* for PB */
+//				pinctrl-0 = <&P2_30_pruout_pin &P2_28_pruin_pin &P2_32_pruin_pin>;
+                                
+
+				/* pin numbers (of the pins above, used by PRU firmware) */
+                                /* for BBB */
+                                pin-CLK = <14>;
+                                pin-MISO = <5>;
+                                pin-CS = <2>;
+				
+                                /* for PB 
+                                pin-CLK = <3>;
+                                pin-MISO = <6>;
+                                pin-CS = <2>;
+                                */
 			};
 		};
 	};
+
+
+	fragment@1 {
+		target-path="/";
+		__overlay__ {
+/*
+			ocp {
+				P2_30_pinmux {
+					status = "disabled";
+				};
+				P2_28_pinmux {
+					status = "disabled";
+				};
+				P2_32_pinmux {
+					status = "disabled";
+				};
+			};
+*/
+			ocp {
+				P8_12_pinmux {
+					status = "disabled";
+				};
+				P9_27_pinmux {
+					status = "disabled";
+				};
+				P9_30_pinmux {
+					status = "disabled";
+				};
+			};
+		};
+	};
+
+
 };
 

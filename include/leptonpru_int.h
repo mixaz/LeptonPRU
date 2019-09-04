@@ -82,6 +82,11 @@ struct capture_context {
 	uint32_t cmd;           // Command from Linux host to us
 	int32_t resp;            // Response code
 
+       /* GPIO configuration */
+       uint32_t pin_CLK;
+       uint32_t pin_MISO;
+       uint32_t pin_CS;
+
 	uint32_t dump_vospi;	// debug mode: dump VoSPI packets to mmap buffers
 						// must be set before the buffers are allocated (start capturing)
 

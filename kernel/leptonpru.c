@@ -85,9 +85,13 @@ struct beaglelogicdev {
 	const struct beaglelogic_private_data *fw_data;
 
 	/* IRQ numbers */
-	int to_bl_irq;
-	int from_bl_irq_1;
-	int from_bl_irq_2;
+	uint16_t to_bl_irq;
+	uint16_t from_bl_irq_1;
+	uint16_t from_bl_irq_2;
+
+	uint32_t pin_clk;
+	uint32_t pin_miso;
+	uint32_t pin_cs;
 
 	/* Private data */
 	struct device *p_dev; /* Parent platform device */
@@ -785,6 +789,22 @@ static int beaglelogic_probe(struct platform_device *pdev)
 			goto fail_putmem;
 	}
 
+       ret = of_property_read_u32(node,"pin-CLK",&bldev->pin_clk);
+	if (ret) {
+		dev_err(&pdev->dev, "No pin-CLK in DT\n");
+		goto fail_putmem;
+	}
+       ret = of_property_read_u32(node,"pin-MISO",&bldev->pin_miso);
+	if (ret) {
+		dev_err(&pdev->dev, "No pin-MISO in DT\n");
+		goto fail_putmem;
+	}
+       ret = of_property_read_u32(node,"pin-CS",&bldev->pin_cs);
+	if (ret) {
+		dev_err(&pdev->dev, "No pin-CS in DT\n");
+		goto fail_putmem;
+	}
+
 	ret = request_irq(bldev->from_bl_irq_1, beaglelogic_serve_irq,
 		IRQF_ONESHOT, dev_name(dev), bldev);
 	if (ret) goto fail_putmem;
@@ -792,6 +812,7 @@ static int beaglelogic_probe(struct platform_device *pdev)
 	ret = request_irq(bldev->from_bl_irq_2, beaglelogic_serve_irq,
 		IRQF_ONESHOT, dev_name(dev), bldev);
 	if (ret) goto fail_free_irq1;
+
 
 	/* Set firmware and boot the PRUs */
 /*
@@ -848,6 +869,13 @@ static int beaglelogic_probe(struct platform_device *pdev)
 		dev_err(dev, "Firmware error!\n");
 		goto faildereg;
 	}
+
+       /* pass pins configuration to PRU */
+	bldev->cxt_pru->pin_CLK = bldev->pin_clk;
+       bldev->cxt_pru->pin_MISO = bldev->pin_miso;
+       bldev->cxt_pru->pin_CS = bldev->pin_cs;
+       printk("LeptonPRU: CLK=%d, MISO=%d, CS=%d\n",
+	   	bldev->cxt_pru->pin_CLK, bldev->cxt_pru->pin_MISO, bldev->cxt_pru->pin_CS);
 
 	/* Get firmware properties */
 	ret = beaglelogic_send_cmd(bldev, CMD_GET_VERSION);
