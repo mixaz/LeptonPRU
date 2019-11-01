@@ -52,6 +52,7 @@ release/
 *.mod
 *.ko.cmd
 *.o.cmd
+*.dwo
 modules.order
 Module.symvers
 
