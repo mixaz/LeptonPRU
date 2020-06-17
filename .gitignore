@@ -116,3 +116,6 @@ node_modules
 
 # Documentation folder
 _build
+
+# Clion IDE folder
+.idea

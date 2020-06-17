@@ -14,23 +14,13 @@
 #ifndef LEPTONPRU_H_
 #define LEPTONPRU_H_
 
-/* ioctl calls that can be issued on /dev/leptonpru */
-
-#define IOCTL_START               			_IO('k', 0x29)
-#define IOCTL_STOP                			_IO('k', 0x2A)
-
-/* Lepton3 image size
- */
-#define IMAGE_WIDTH		160
-#define IMAGE_HEIGHT	120
+#define BUFFER_SIZE         1024
 
 /*
  * mmap buffer structure
  */
  typedef struct _leptonpru_mmap  {
-	 uint32_t min_val;		 // min value in image
-	 uint32_t max_val;		 // max value in image
-	 uint16_t image[IMAGE_WIDTH * IMAGE_HEIGHT];
+	 uint32_t image[BUFFER_SIZE];
  } leptonpru_mmap;
 
 // max frames number. Must be power of 2

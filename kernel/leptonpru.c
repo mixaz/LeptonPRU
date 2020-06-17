@@ -80,7 +80,7 @@ struct beaglelogicdev {
 
 	/* Handle to pruss structure and PRU0 SRAM */
 	struct pruss *pruss;
-	struct rproc *pru0, *pru1;
+	struct rproc *pru0;//, *pru1;
 	struct pruss_mem_region pru0sram;
 	const struct beaglelogic_private_data *fw_data;
 
@@ -89,9 +89,7 @@ struct beaglelogicdev {
 	uint16_t from_bl_irq_1;
 	uint16_t from_bl_irq_2;
 
-	uint32_t pin_clk;
-	uint32_t pin_miso;
-	uint32_t pin_cs;
+	uint32_t pins_mask;
 
 	/* Private data */
 	struct device *p_dev; /* Parent platform device */
@@ -122,7 +120,7 @@ struct logic_buffer_reader {
 		struct beaglelogicdev, miscdev)
 
 #define DRV_NAME		"leptonpru"
-#define DRV_VERSION		"0.2"
+#define DRV_VERSION		"0.1"
 
 /* Begin Buffer Management section */
 
@@ -267,7 +265,7 @@ static int beaglelogic_send_cmd(struct beaglelogicdev *bldev, uint32_t cmd)
 	uint32_t timeout = TIMEOUT;
 
 //	dev_info(dev, "command %d to PRU\n",cmd);
-	
+
 	bldev->cxt_pru->cmd = cmd;
 
 	/* Wait for firmware to process the command */
@@ -280,7 +278,7 @@ static int beaglelogic_send_cmd(struct beaglelogicdev *bldev, uint32_t cmd)
 	}
 
 	dev_info(dev, "command %d to PRU, response=%d\n",cmd,bldev->cxt_pru->resp);
-	
+
 	return bldev->cxt_pru->resp;
 }
 
@@ -327,20 +325,6 @@ irqreturn_t beaglelogic_serve_irq(int irqno, void *data)
 	return IRQ_HANDLED;
 }
 
-/* Write configuration into the PRU [via downcall] (assume mutex is held) */
-int beaglelogic_write_configuration(struct device *dev)
-{
-	struct beaglelogicdev *bldev = dev_get_drvdata(dev);
-	int ret;
-
-	/* Hand over the settings */
-//	bldev->cxt_pru->triggerflags = bldev->triggerflags;
-	ret = beaglelogic_send_cmd(bldev, CMD_SET_CONFIG);
-
-	dev_dbg(dev, "PRU Config written, err code = %d\n", ret);
-	return 0;
-}
-
 /* Begin the sampling operation [This takes the mutex] */
 int beaglelogic_start(struct device *dev)
 {
@@ -348,16 +332,6 @@ int beaglelogic_start(struct device *dev)
 
 	/* This mutex will be locked for the entire duration BeagleLogic runs */
 	mutex_lock(&bldev->mutex);
-	if (beaglelogic_write_configuration(dev)) {
-		mutex_unlock(&bldev->mutex);
-		return -1;
-	}
-
-#if USE_PRUS == 1
-	
-	beaglelogic_send_cmd(bldev, CMD_START);
-
-#endif
 
 	/* All set now. Start the PRUs and wait for IRQs */
 	bldev->state = STATE_BL_RUNNING;
@@ -370,29 +344,29 @@ int beaglelogic_start(struct device *dev)
 /* Request stop. Stop will effect only after the last buffer is written out */
 void beaglelogic_stop(struct device *dev)
 {
-	struct beaglelogicdev *bldev = dev_get_drvdata(dev);
+  struct beaglelogicdev *bldev = dev_get_drvdata(dev);
 
-	if (mutex_is_locked(&bldev->mutex)) {
-		if (bldev->state == STATE_BL_RUNNING)
-		{
+  if (mutex_is_locked(&bldev->mutex)) {
+    if (bldev->state == STATE_BL_RUNNING)
+    {
 
 #if USE_PRUS == 1
-		
-			beaglelogic_request_stop(bldev);
-			bldev->state = STATE_BL_REQUEST_STOP;
 
-			/* Wait for the PRU to signal completion */
-			wait_event_interruptible(bldev->wait,
-					bldev->state == STATE_BL_INITIALIZED);
+      beaglelogic_request_stop(bldev);
+      bldev->state = STATE_BL_REQUEST_STOP;
+
+      /* Wait for the PRU to signal completion */
+      wait_event_interruptible(bldev->wait,
+                               bldev->state == STATE_BL_INITIALIZED);
 
 #endif
-			
-		}
-		/* Release */
-		mutex_unlock(&bldev->mutex);
 
-		dev_info(dev, "capture session ended\n");
-	}
+    }
+    /* Release */
+    mutex_unlock(&bldev->mutex);
+
+    dev_info(dev, "capture session ended\n");
+  }
 }
 
 /* fops */
@@ -504,26 +478,6 @@ int beaglelogic_f_mmap(struct file *filp, struct vm_area_struct *vma)
 	return 0;
 }
 
-/* Configuration through ioctl */
-static long beaglelogic_f_ioctl(struct file *filp, unsigned int cmd,
-		  unsigned long arg)
-{
-	struct logic_buffer_reader *reader = filp->private_data;
-	struct beaglelogicdev *bldev = reader->bldev;
-	struct device *dev = bldev->miscdev.this_device;
-
-	switch (cmd) {
-		case IOCTL_START:
-			/* Reset and reconfigure the reader object and then start */
-			beaglelogic_start(dev);
-			return 0;
-		case IOCTL_STOP:
-			beaglelogic_stop(dev);
-			return 0;
-	}
-	return -ENOTTY;
-}
-
 /* Poll the file descriptor */
 unsigned int beaglelogic_f_poll(struct file *filp,
 		struct poll_table_struct *tbl)
@@ -562,7 +516,6 @@ static int beaglelogic_f_release(struct inode *inode, struct file *filp)
 static const struct file_operations pru_beaglelogic_fops = {
 	.owner = THIS_MODULE,
 	.open = beaglelogic_f_open,
-	.unlocked_ioctl = beaglelogic_f_ioctl,
 	.read = beaglelogic_f_read,
 	.write = beaglelogic_f_write,
 	.mmap = beaglelogic_f_mmap,
@@ -591,14 +544,10 @@ static ssize_t bl_state_show(struct device *dev,
 	struct beaglelogicdev *bldev = dev_get_drvdata(dev);
 
 	return scnprintf(buf, PAGE_SIZE, 
-		"state: %d, queue:%d, frames received: %d, dropped: %d, \
-segments mismatch: %d, packets mismatch: %d, resync: %d, discards found: %d, discard sync fails: %d\n", 
+		"state: %d, queue:%d, frames received: %d, dropped: %d\n",
 		bldev->state,
 		LIST_SIZE(bldev->cxt_pru->list_start,bldev->cxt_pru->list_end),
-		bldev->cxt_pru->frames_received,bldev->cxt_pru->frames_dropped, 
-		bldev->cxt_pru->segments_mismatch,bldev->cxt_pru->packets_mismatch,
-		bldev->cxt_pru->resync_counter,
-		bldev->cxt_pru->discards_found,bldev->cxt_pru->discard_sync_fails);
+		bldev->cxt_pru->frames_received,bldev->cxt_pru->frames_dropped);
 }
 
 static ssize_t bl_state_store(struct device *dev,
@@ -617,10 +566,6 @@ static ssize_t bl_state_store(struct device *dev,
 		beaglelogic_start(dev);
 	else if (val == 0)
 		beaglelogic_stop(dev);
-	else if (val == 2) {
-		ret = beaglelogic_send_cmd(bldev, CMD_TEST_FRAME);
-		dev_info(dev, "response: %d\n",ret);
-	}
 	else {
 		return -EINVAL;
 	}
@@ -744,15 +689,15 @@ static int beaglelogic_probe(struct platform_device *pdev)
 			dev_err(dev, "unable to get PRU0: %d\n", ret);
 		goto fail_free;
 	}
-	bldev->pru1 = pru_rproc_get(node, 1);
-	if (IS_ERR(bldev->pru1)) {
-		printk("LeptonPRU: remoteproc for PRU1 fails\n");
-		ret = PTR_ERR(bldev->pru1);
-		bldev->pru1 = NULL;
-		if (ret != -EPROBE_DEFER)
-			dev_err(dev, "unable to get PRU1: %d\n", ret);
-		goto fail_put_pru0;
-	}
+//	bldev->pru1 = pru_rproc_get(node, 1);
+//	if (IS_ERR(bldev->pru1)) {
+//		printk("LeptonPRU: remoteproc for PRU1 fails\n");
+//		ret = PTR_ERR(bldev->pru1);
+//		bldev->pru1 = NULL;
+//		if (ret != -EPROBE_DEFER)
+//			dev_err(dev, "unable to get PRU1: %d\n", ret);
+//		goto fail_put_pru0;
+//	}
 
 	bldev->pruss = pruss_get(bldev->pru0);
 	if (IS_ERR(bldev->pruss)) {
@@ -789,22 +734,6 @@ static int beaglelogic_probe(struct platform_device *pdev)
 			goto fail_putmem;
 	}
 
-       ret = of_property_read_u32(node,"pin-CLK",&bldev->pin_clk);
-	if (ret) {
-		dev_err(&pdev->dev, "No pin-CLK in DT\n");
-		goto fail_putmem;
-	}
-       ret = of_property_read_u32(node,"pin-MISO",&bldev->pin_miso);
-	if (ret) {
-		dev_err(&pdev->dev, "No pin-MISO in DT\n");
-		goto fail_putmem;
-	}
-       ret = of_property_read_u32(node,"pin-CS",&bldev->pin_cs);
-	if (ret) {
-		dev_err(&pdev->dev, "No pin-CS in DT\n");
-		goto fail_putmem;
-	}
-
 	ret = request_irq(bldev->from_bl_irq_1, beaglelogic_serve_irq,
 		IRQF_ONESHOT, dev_name(dev), bldev);
 	if (ret) goto fail_putmem;
@@ -837,11 +766,11 @@ static int beaglelogic_probe(struct platform_device *pdev)
 		goto fail_free_irqs;
 	}
 
-	ret = rproc_boot(bldev->pru1);
-	if (ret) {
-		dev_err(dev, "Failed to boot PRU1: %d\n", ret);
-		goto fail_shutdown_pru0;
-	}
+//	ret = rproc_boot(bldev->pru1);
+//	if (ret) {
+//		dev_err(dev, "Failed to boot PRU1: %d\n", ret);
+//		goto fail_shutdown_pru0;
+//	}
 	
 	printk("Lepton PRU loaded and initializing\n");
 
@@ -870,28 +799,11 @@ static int beaglelogic_probe(struct platform_device *pdev)
 		goto faildereg;
 	}
 
-       /* pass pins configuration to PRU */
-	bldev->cxt_pru->pin_CLK = bldev->pin_clk;
-       bldev->cxt_pru->pin_MISO = bldev->pin_miso;
-       bldev->cxt_pru->pin_CS = bldev->pin_cs;
-       printk("LeptonPRU: CLK=%d, MISO=%d, CS=%d\n",
-	   	bldev->cxt_pru->pin_CLK, bldev->cxt_pru->pin_MISO, bldev->cxt_pru->pin_CS);
+        /* We got configuration from PRUs, now mark device init'd */
+        bldev->state = STATE_BL_INITIALIZED;
 
-	/* Get firmware properties */
-	ret = beaglelogic_send_cmd(bldev, CMD_GET_VERSION);
-	if (ret != 0) {
-		dev_info(dev, "LeptonPRU PRU Firmware version: %d.%d\n",
-				ret >> 8, ret & 0xFF);
-	} else {
-		dev_err(dev, "Firmware error!\n");
-		goto faildereg;
-	}
-	
-	/* We got configuration from PRUs, now mark device init'd */
-	bldev->state = STATE_BL_INITIALIZED;
-
-       beaglelogic_memalloc(dev);
-	beaglelogic_map_and_submit_all_buffers(dev);
+        beaglelogic_memalloc(dev);
+        beaglelogic_map_and_submit_all_buffers(dev);
 	
 	/* Display our init'ed state */
 	dev_info(dev, "Lepton PRU initialized OK\n");
@@ -908,7 +820,7 @@ static int beaglelogic_probe(struct platform_device *pdev)
 faildereg:
 	misc_deregister(&bldev->miscdev);
 fail_shutdown_prus:
-	rproc_shutdown(bldev->pru1);
+//	rproc_shutdown(bldev->pru1);
 fail_shutdown_pru0:
 	rproc_shutdown(bldev->pru0);
 fail_free_irqs:
@@ -921,7 +833,7 @@ fail_putmem:
 fail_pruss_put:
 	pruss_put(bldev->pruss);
 fail_put_pru1:
-	pru_rproc_put(bldev->pru1);
+//	pru_rproc_put(bldev->pru1);
 fail_put_pru0:
 	pru_rproc_put(bldev->pru0);
 fail_free:
@@ -942,7 +854,7 @@ static int beaglelogic_remove(struct platform_device *pdev)
 	misc_deregister(&bldev->miscdev);
 
 	/* Shutdown the PRUs */
-	rproc_shutdown(bldev->pru1);
+//	rproc_shutdown(bldev->pru1);
 	rproc_shutdown(bldev->pru0);
 
 	/* Free IRQs */
@@ -951,7 +863,7 @@ static int beaglelogic_remove(struct platform_device *pdev)
 
 	/* Release handles to PRUSS memory regions */
 	pruss_release_mem_region(bldev->pruss, &bldev->pru0sram);
-	pru_rproc_put(bldev->pru1);
+//	pru_rproc_put(bldev->pru1);
 	pru_rproc_put(bldev->pru0);
 	pruss_put(bldev->pruss);
 
@@ -985,6 +897,6 @@ static struct platform_driver beaglelogic_driver = {
 module_platform_driver(beaglelogic_driver);
 
 MODULE_AUTHOR("Mikhail Zemlyanukha <gmixaz@gmail.com>");
-MODULE_DESCRIPTION("Kernel PRU Driver for Lepton IR camera");
+MODULE_DESCRIPTION("PRU GPIOs sampler");
 MODULE_LICENSE("GPL");
 MODULE_VERSION(DRV_VERSION);

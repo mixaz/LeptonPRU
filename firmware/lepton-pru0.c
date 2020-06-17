@@ -21,285 +21,41 @@
 
 #include "../include/leptonpru_int.h"
 
-// Beaglebone Black
-//#define CLK	14	//P8_12
-//#define MISO	5	//P9_27
-//#define CS	2	//P9_30
+/* from https://gist.github.com/shirriff/2a7cf2f1adb37011da827f1c7f47b992 */
+#define DELAY_NS 500000 // Use 500000000 for 0.5 second delay
+#define COUNT_10MS 20   // counter for 100Hz calculated from DELAY_NS
 
-// PocketBeagle
-//#define CLK	3	//P2_30
-//#define MISO	6	//P2_28
-//#define CS	2	//P2_32
+// PRU Interrupt control registers
+#define PRU_INTC 0x00020000 // Start of PRU INTC registers TRM 4.3.1.2
+#define PRU_INTC_GER ((volatile uint32_t *)(PRU_INTC + 0x10)) // Global Interrupt Enable, TRM 4.5.3.3
+#define PRU_INTC_SICR ((volatile uint32_t *)(PRU_INTC + 0x24)) // Interrupt, TRM 4.5.3.6
+#define PRU_INTC_GPIR ((volatile uint32_t *)(PRU_INTC + 0x80)) // Interrupt, TRM 4.5.3.11
 
-/*
- * Define firmware version
- */
-#define MAJORVER	0
-#define MINORVER	2
+// PRU ECAP control registers (i.e. PWM used as a timer)
+#define ECAP 0x00030000 // ECAP0 offset, TRM 4.3.1.2
+// Using APWM mode (TRM 15.3.2.1) to get timer (TRM 15.3.3.5.1)
+#define ECAP_TSCTR ((volatile uint32_t *)(ECAP + 0x00)) // 32-bit counter register, TRM 15.3.4.1.1
+#define ECAP_APRD ((volatile uint32_t *)(ECAP + 0x10)) // Period shadow, TRM 15.3.4.1.5, aka CAP3
+#define ECAP_ECCTL2 ((volatile uint32_t *)(ECAP + 0x2a)) // Control 2, TRM 15.3.4.1.8
+#define ECAP_ECEINT ((volatile uint16_t *)(ECAP + 0x2c)) // Enable interrupt, TRM 15.3.4.1.9
+#define ECAP_ECCLR ((volatile uint16_t *)(ECAP + 0x30)) // Clear flags, TRM 15.3.4.1.11
 
-#define SET_PIN(bit,high) 		if(high) __R30 |= (1 << (bit)); else __R30 &= ~(1 << (bit));
-#define INVERT_PIN(bit) 		__R30 ^= (1 << (bit));
-#define CHECK_PIN(bit)		__R31 & (1 << (bit))
-
-/* max bits to wait for discard packet header (3 packets for now) */
-#define MAX_BITS_TO_DISCARD	(3*PACKETS_PER_FRAME*PACKET_SIZE_UINT16*16)
-#define MAX_TRIES_TO_SYNC 		5
-#define WRONG_SEGMENTS_TO_RESYNC 	10
-#define WRONG_PACKETS_TO_RESYNC 	(PACKETS_PER_SEGMENT*100)
+// Forward definitions
+static void init_pwm();
+static void wait_for_pwm_timer();
 
 /* PRU/ARM shared memory */
 struct capture_context cxt __attribute__((location(0))) = {0};
 
-static uint8_t state_run = 0;
-static uint8_t test_frame_run = 0;
-static uint8_t test_frame_val = 0;
-
-/*
- * read byte from SPI pins, SPI mode 3 - CPOL=1, CPHA=1, CS low on active
- */
-static uint16_t spi_read16() 
-{
-	uint8_t i;
-	uint16_t miso;
-
-       uint8_t pCLK = (uint8_t)cxt.pin_CLK;
-       uint8_t pMISO = (uint8_t)cxt.pin_MISO;
-       uint8_t pCS = (uint8_t)cxt.pin_CS;
-
-	miso = 0x0;
-	
-	for (i = 0; i < 16; i++) {
-		miso <<= 1;
-		SET_PIN(pCLK,0);
-		__delay_cycles(10);
-		SET_PIN(pCLK,1);
-		__delay_cycles(2);
-		
-		if (CHECK_PIN(pMISO))
-			miso |= 0x01;
-		else
-			miso &= ~0x01;
-	}
-	return miso;
-}
+static uint8_t state_run;
 
 /* TODO: Placeholder to change configuration parameters */
 static int configure_capture() {
 	return 0;
 }
 
-/*
- * reset CS for 200ms to resync
- */
-static void resync() {
-	uint8_t pCLK = (uint8_t)cxt.pin_CLK;
-	uint8_t pMISO = (uint8_t)cxt.pin_MISO;
-	uint8_t pCS = (uint8_t)cxt.pin_CS;
-	
-	cxt.resync_counter++;
-	// CS high to disable lepton
-	SET_PIN(pCS, 1);
-	// CLK high for idle
-	SET_PIN(pCLK, 1);
-	__delay_cycles(40000000L);
-	// set CS low on active
-	SET_PIN(pCS,0);
-	// wait a bit before we start CLK
-	__delay_cycles(100L);
-	
-	SET_PIN(pCLK, 0);
-}
-
-/* looks for 0x0fff 0xffff 0x0000 pattern */
-/* returns number of read bits  */
-static uint32_t wait_FFF_FFFF_0000(uint32_t maxBits) {
-	uint32_t cnt1111,cnt0000;
-	uint32_t bits = 0;
-	
-	uint8_t pCLK = (uint8_t)cxt.pin_CLK;
-	uint8_t pMISO = (uint8_t)cxt.pin_MISO;
-	uint8_t pCS = (uint8_t)cxt.pin_CS;
-	
-	cnt1111 = cnt0000 = 0;
-	
-	while((cnt1111 < 12+16 || cnt0000 < 16) && bits < maxBits) {
-		
-		SET_PIN(pCLK,0);
-		__delay_cycles(20);
-		
-		SET_PIN(pCLK,1);
-		if (CHECK_PIN(pMISO)) {
-			if(cnt0000) {
-				cnt1111 = 0;
-				cnt0000 = 0;
-			}
- 			cnt1111++;
-		}
-		else {
-			cnt0000++;
-		}
-		__delay_cycles(20);
-		bits++;
-	}
-	if(bits >= maxBits)
-		cxt.discard_sync_fails++;
-	else
-		cxt.discards_found++;
-	return bits;
-}
-
-static int sync_discard_packet() {
-	uint32_t nn;
-	int i;
-	for(i=0; i<MAX_TRIES_TO_SYNC; i++) {
-		if(wait_FFF_FFFF_0000(MAX_BITS_TO_DISCARD) >= MAX_BITS_TO_DISCARD)
-			return -1;
-		nn = wait_FFF_FFFF_0000(MAX_BITS_TO_DISCARD);
-		if(nn >= MAX_BITS_TO_DISCARD)
-			return -1;
-		if(nn == PACKET_SIZE_UINT16*16) {
-			// skip remaining bytes till end of the packet
-			for(i=0; i<PACKET_SIZE_UINT16-3; i++) {
-				spi_read16();
-			}
-			return 0;
-		}
-		cxt.discard_sync_fails++;
-	}
-	return -2;
-}
-
-/* shall return error when out of sync detected */
-static int read_frame(int buf_idx)
-{
-        uint16_t i,j,k;
-	int wrong_segment, wrong_packet;
-	uint8_t segmentNumber;
-	uint8_t packetNumber;
-
-	uint16_t *packet_ptr,*segment_ptr;
-	uint16_t head0,head1,bb;		// head1 keeps CRC, ignored for now
-
-	uint16_t frame_min = 0xFFFF;
-	uint16_t frame_max = 0;
-	uint16_t segment_min;
-	uint16_t segment_max;
-	uint16_t packet_min;
-	uint16_t packet_max;
-
-	leptonpru_mmap *mmap_buf = (leptonpru_mmap *)(cxt.list_head[buf_idx].dma_start_addr);
-	segment_ptr = mmap_buf->image;
-	
-	wrong_segment = 0;
-	for(i = 0; i < NUMBER_OF_SEGMENTS; ){
-		wrong_packet = 0;
-		packet_ptr = segment_ptr;
-		segment_min = 0xFFFF;
-		segment_max = 0;
-		
-		for(j=0;j<SEGMENT_HEIGHT;) {
-			packet_min = 0xFFFF;
-			packet_max = 0;
-			head0 = spi_read16();
-			head1 = spi_read16();
-#ifdef RAW_DATA			
-			*packet_ptr++ = head0;
-			*packet_ptr++ = head1;
-#endif
-			for(k=0; k<SEGMENT_WIDTH; k++) {
-				bb = spi_read16();
-				*packet_ptr++ = bb;
-				if(bb > packet_max)
-					packet_max = bb;
-				else if(bb < packet_min)
-					packet_min = bb;
-			}
-			
-			// skip discard packet (these are transmitted between segments)
-			if((head0 & 0x0FFF) == 0x0FFF && head1 == 0xFFFF) {
-				if(j != 0) {
-					// unexpected discard -the segment was not fully transmitted
-					cxt.packets_mismatch++;
-				}
-				j = 0; 
-				packet_ptr = segment_ptr;
-				segment_min = 0xFFFF;
-				segment_max = 0;
-				continue;
-			}
-
-			packetNumber = head0 & 0xFF;
-			// out of sync - wrong packet number received. 
-			// a sync to discard packets shall be performed
-			if(packetNumber != j) {
-				cxt.packets_mismatch++;
-				if(++wrong_packet >= WRONG_PACKETS_TO_RESYNC)
-					return -2;
-				j = 0;
-				packet_ptr = segment_ptr;
-				segment_min = 0xFFFF;
-				segment_max = 0;
-				continue;
-			} 
-
-			if(packetNumber == 20) {
-				//reads the "ttt" number
-				segmentNumber = head0 >> 12;
-				//if it's not the segment expected reads again
-				//for some reason segment are shifted, 1 down in result
-				if(segmentNumber != i+1) {
-					// wrong segment received, read next one till needed segment.
-					// 2/3 frames are transmitted with segmentNumber = 0, shall be ignored.
-					if(segmentNumber != 0)
-						cxt.segments_mismatch++;
-					wrong_segment++;	// read segment till the end then dismiss it
-				}
-				else {
-					wrong_segment = 0;
-				}
-			}
-			
-			// TODO: check packet CRC
-			// next packet
-			if(packet_max > segment_max)
-				segment_max = packet_max;
-			if(packet_min < segment_min)
-				segment_min = packet_min;
-			j++;
-		}
-		// next segment
-		if(wrong_segment) {
-			if(wrong_segment >= WRONG_SEGMENTS_TO_RESYNC)
-				return -1;
-			// dismiss the segment, read it anew
-		}
-		else {
-			if(segment_max > frame_max)
-				frame_max = segment_max;
-			if(segment_min < frame_min)
-				frame_min = segment_min;
-			i++;
-#ifdef RAW_DATA
-			segment_ptr += SEGMENT_SIZE_UINT16;
-#else
-			segment_ptr += SEGMENT_HEIGHT*SEGMENT_WIDTH;
-#endif
-		}
-	}	
-	mmap_buf->min_val = frame_min;
-	mmap_buf->max_val = frame_max;
-	cxt.frames_received++;
-        return 0;	
-}
-
 static int handle_command(uint32_t cmd) {
 	switch (cmd) {
-		case CMD_GET_VERSION:
-			return (MINORVER | (MAJORVER << 8));
-
-		case CMD_SET_CONFIG:
-			return configure_capture();
-
 		case CMD_START:
 			state_run = 3;
 			return 0;
@@ -308,108 +64,111 @@ static int handle_command(uint32_t cmd) {
 			state_run = 2;
 			return 0;
 
-		case CMD_TEST_FRAME:
-			if(LIST_IS_FULL(cxt.list_start,cxt.list_end)) {
-				return -2;
-			}
-			test_frame_run = 1;
-			return 0;
-
 	}
 	return -1;
 }
 
 void main()
 {
-	uint8_t pCS;
-	
-	/* Enable OCP Master Port */
-	CT_CFG.SYSCFG_bit.STANDBY_INIT = 0;
-	cxt.magic = FW_MAGIC;
+    /* Enable OCP Master Port */
+    CT_CFG.SYSCFG_bit.STANDBY_INIT = 0;
+    cxt.magic = FW_MAGIC;
 
-	/* Clear all interrupts */
-	CT_INTC.SECR0 = 0xFFFFFFFF;
+    /* Clear all interrupts */
+    CT_INTC.SECR0 = 0xFFFFFFFF;
 
-	while (1) {
-		/* Process received command */
-		if (cxt.cmd != 0)
-		{
-			cxt.resp = handle_command(cxt.cmd);
-			cxt.cmd = 0;
-		}
+    // stopped state
+    state_run = 0;
 
-		/* generate test frame */
-		if (test_frame_run == 1) {
-			test_frame_run = 0;
+    init_pwm();
 
-			/* Clear all pending interrupts */
-			CT_INTC.SECR0 = 0xFFFFFFFF;
+    cxt.frames_received = cxt.frames_dropped = 0;
 
-			uint8_t *dd = (uint8_t *)cxt.list_head[LIST_COUNTER_PSY(cxt.list_end)].dma_start_addr;
-			memset(dd,test_frame_val++,FRAME_SIZE);
-			LIST_COUNTER_INC(cxt.list_end);
-			
-			/* Signal completion */
-			SIGNAL_EVENT(SYSEV_PRU0_TO_ARM_A);
-		}
-		
-		if (state_run == 1) {
+    uint16_t count_10msec = 0;
+    uint8_t count_10msec_0 = 0;
 
-			// if queue is full, let's re-write the last frame, to not stop the stream
-			if(LIST_IS_FULL(cxt.list_start,cxt.list_end)) {
-				LIST_COUNTER_DEC(cxt.list_end);
-				cxt.frames_dropped++;
-			}
-			if(read_frame(LIST_COUNTER_PSY(cxt.list_end))) {
-				if(sync_discard_packet()) {
-					resync();
-					__delay_cycles(100000L);
-					// TODO: implement hard reset here after few more attempts
-				}
-				
-				continue;
-			}
-			LIST_COUNTER_INC(cxt.list_end)
-				
-			/* Signal frame completion */
-			SIGNAL_EVENT(SYSEV_PRU0_TO_ARM_A);
+    uint32_t packet;
 
-		}
-		else if (state_run == 3) {
-			state_run = 1;
-			
-			// reset counters
-			cxt.list_start = cxt.list_end = 0;
-			cxt.segments_mismatch = 0;
-			cxt.packets_mismatch = 0;
-			cxt.resync_counter = 0;
-			cxt.frames_dropped = 0;
-			cxt.frames_received = 0;
-			cxt.discard_sync_fails = 0;
-			cxt.discards_found = 0;
-			
-			/* Clear all pending interrupts */
-			CT_INTC.SECR0 = 0xFFFFFFFF;
-//			resume_other_pru();
-			resync();
-			sync_discard_packet();
-		}
-		else if (state_run == 2) {
-			pCS = (uint8_t)cxt.pin_CS;
-			state_run = 0;
-			// disable CS
-			SET_PIN(pCS,1);
-			/* Clear all pending interrupts */
-			CT_INTC.SECR0 = 0xFFFFFFFF;
-			// allow some time for ARM to prepare for SYSEV_PRU0_TO_ARM_B handling
-			__delay_cycles(10000000);
-			/* Signal completion */
-			SIGNAL_EVENT(SYSEV_PRU0_TO_ARM_B);
-			
-			/* Reset PRU1 and our state */
-//			PCTRL_OTHER(0x0000) &= (uint16_t)~CONTROL_SOFT_RST_N;
-		}
-	}
+    uint16_t frames_count = 0;
+    leptonpru_mmap *mmap_buf = (leptonpru_mmap *)(cxt.list_head[0].dma_start_addr);
+    uint32_t *buffer_ptr = mmap_buf->image;
+
+    while (1) {
+        /* Process received command */
+        if (cxt.cmd != 0)
+        {
+          cxt.resp = handle_command(cxt.cmd);
+          cxt.cmd = 0;
+        }
+
+        wait_for_pwm_timer();
+        packet  = (__R31 & 0xFFFF) | (count_10msec << 16);
+
+        // 100Hz counter always work regardless state
+        count_10msec_0++;
+        if (count_10msec_0 >= COUNT_10MS) {
+          count_10msec++;
+          count_10msec_0 = 0;
+        }
+
+        if (state_run == 1) {
+          *buffer_ptr++ = packet;
+          frames_count++;
+          if (frames_count >= BUFFER_SIZE) {
+            // if queue is full, let's re-write the last frame, to not stop the stream
+            if (LIST_IS_FULL(cxt.list_start, cxt.list_end)) {
+              LIST_COUNTER_DEC(cxt.list_end);
+              cxt.frames_dropped++;
+            }
+            LIST_COUNTER_INC(cxt.list_end);
+            cxt.frames_received++;
+            frames_count = 0;
+            mmap_buf = (leptonpru_mmap *)(cxt.list_head[cxt.list_end].dma_start_addr);
+            buffer_ptr = mmap_buf->image;
+
+            /* Signal completion */
+            SIGNAL_EVENT(SYSEV_PRU0_TO_ARM_A);
+          }
+        }
+        else if (state_run == 3) {
+          frames_count = 0;
+          mmap_buf = (leptonpru_mmap *)(cxt.list_head[cxt.list_end].dma_start_addr);
+          buffer_ptr = mmap_buf->image;
+
+          state_run = 1;
+        }
+        else if (state_run == 2) {
+          state_run = 0;
+
+          /* Clear all pending interrupts */
+          CT_INTC.SECR0 = 0xFFFFFFFF;
+          // allow some time for ARM to prepare for SYSEV_PRU0_TO_ARM_B handling
+          // FIXME: this stops count_10msec counter, but it's not critical?
+          __delay_cycles(10000000);
+          /* Signal completion */
+          SIGNAL_EVENT(SYSEV_PRU0_TO_ARM_B);
+
+          /* Reset PRU1 and our state */
+//	  PCTRL_OTHER(0x0000) &= (uint16_t)~CONTROL_SOFT_RST_N;
+        }
+    }
 }
 
+// Initializes the PWM timer, used to control output transitions.
+// Every DELAY_NS nanoseconds, interrupt 15 will fire
+inline void init_pwm() {
+  *PRU_INTC_GER = 1; // Enable global interrupts
+  *ECAP_APRD = DELAY_NS / 5 - 1; // Set the period in cycles of 5 ns
+  *ECAP_ECCTL2 = (1<<9) /* APWM */ | (1<<4) /* counting */;
+  *ECAP_TSCTR = 0; // Clear counter
+  *ECAP_ECEINT = 0x80; // Enable compare equal interrupt
+  *ECAP_ECCLR = 0xff; // Clear interrupt flags
+}
 
+// Wait for the PWM timer to fire.
+// see TRM 15.2.4.26
+inline void wait_for_pwm_timer() {
+  while (!(__R31 & (1 << 30))) {} // Wait for timer compare interrupt
+  *PRU_INTC_SICR = 15; // Clear interrupt
+  *ECAP_ECCLR = 0xff; // Clear interrupt flags
+}
