@@ -294,7 +294,7 @@ cd kernel
 
 Now we can cross compile the kernel module (also in leptonpru/dockcross session):
 ```
-cross-compile-module.sh 
+./cross-compile-module.sh 
 ```
 leptonpru.ko file shall appear in current folder.
 
@@ -302,11 +302,11 @@ leptonpru.ko file shall appear in current folder.
 
 If you need to build dtbo file as well, you need to cross compule DTC (Device Tree Compiler) first (also in leptonpru/dockcross session):
 ```
-cross-compile-dtc.sh
+./cross-compile-dtc.sh
 ```
 Now you can compile dts file to dtbo binary (also in leptonpru/dockcross session):
 ```
-cross-compile-overlay.sh
+./cross-compile-overlay.sh
 ```
 
 ## Some Additional info and links
@@ -337,8 +337,6 @@ Telemetry is not supported.
 
 Some useful links just in case:
 
-* [FLIR Lepton Engineering Datasheet](docs/flir-lepton-engineering-datasheet.pdf)
-* [FLIR Lepton 2 vs Lepton 3](docs/lepton-vs-lepton-3-app-note.pdf)
 * [BEAGLEBONE PRU CODE IN C](http://catch22.eu/beaglebone/beaglebone-pru-c/) - highly recommended, please read! and check there other articles as well, how to use prussdrv
 * [TI PRU Training, LAB 5](http://processors.wiki.ti.com/index.php/PRU_Training:_Hands-on_Labs#LAB_5:_RPMsg_Communication_between_ARM_and_PRU)
 * [BeagleLogic: Building a logic analyzer with the PRUs](http://theembeddedkitchen.net/beaglelogic-building-a-logic-analyzer-with-the-prus-part-1/449)
@@ -346,13 +344,7 @@ Some useful links just in case:
 * [Ti AM33XX PRUSSv2 on eLinux.org](https://elinux.org/Ti_AM33XX_PRUSSv2)
 * [PRU Cookbook](https://markayoder.github.io/PRUCookbook/)
 * [Beaglebone PRU shared memory in C](http://catch22.eu/beaglebone/beaglebone-pru-ipc/)
-* [SPI Master Controller on PRU](https://github.com/chanakya-vc/PRU-I2C_SPI_master/wiki/SPI-Master-Controller)
-* [PRU SPI driver on the BeagleBone](https://github.com/giuliomoro/bb-pru-spi-duplex)
 * [Beaglebone PRU DMA support](https://github.com/maciejjo/beaglebone-pru-dma)
-* [QT4 cross-compiling for BBB](https://github.com/yongli-aus/qt-4.8.6-cross-compile-for-beaglebone-black)
-* [Beagleboard:Expanding File System Partition On A microSD](https://elinux.org/Beagleboard:Expanding_File_System_Partition_On_A_microSD)
 * [Using Device Trees To Configure PRU IO Pins](http://www.ofitselfso.com/BeagleNotes/UsingDeviceTreesToConfigurePRUIOPins.php)
-* [TESTCape. Understanding the Device Tree (PART I)](http://papermint-designs.com/community/node/391)
 * [Simple MMAP implementation for Linux driver](https://stackoverflow.com/a/45645732/1028256)
-* [Add X11 to a BeagleBone IoT image](https://gist.github.com/jadonk/39d0fcfc323347d88e995cdfee02bdad)
 

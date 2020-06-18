@@ -22,63 +22,97 @@
 
 #include "LeptonPruLib.h"
 
-static void print_frame1(uint16_t *buf) {
-	int i,j,nn;
-	printf("----------------\n");
-	nn = 0;
-	for(i=0; i<IMAGE_HEIGHT; i++) {
-		printf("%03d: ",i);
-		for(j=0;j<IMAGE_WIDTH;j++)  {
-//			if(j < 10)
-			    printf("%04x ",buf[nn]);
-			nn++;
-		}
-		printf("\n");
-	}
+static FILE *io,*iodir,*ioval;
+
+static void open_gpios() {
+    io = fopen("/sys/class/gpio/export", "w");
+    fseek(io, 0, SEEK_SET);
+    fprintf(io, "%d", 39);
+    fflush(io);
+
+    iodir = fopen("/sys/class/gpio/gpio39/direction", "w");
+    fseek(iodir, 0, SEEK_SET);
+    fprintf(iodir, "out");
+    fflush(iodir);
+
+    ioval = fopen("/sys/class/gpio/gpio39/value", "w");
+    fseek(ioval, 0, SEEK_SET);
+}
+
+static void close_gpios() {
+    fclose(io);
+    fclose(iodir);
+    fclose(ioval);
+}
+
+static void print_frame1(uint32_t *buf) {
+    int i;
+    uint32_t bb, count, gpios;
+    printf("----------------\n");
+    for(i=0; i<BUFFER_SIZE; i++) {
+        bb = buf[i];
+        count = bb >> 16;
+        gpios = bb & 0xFFFF;
+        printf("%04x:%04x ",count,gpios);
+    }
+    printf("\n");
+}
+
+static void set_gpios(int val) {
+    fprintf(ioval,"%d",val);
+    fflush(ioval);
 }
 
 int main() {
-	int fd, err;
-	LeptonPruContext ctx;
-	
-        fd = open("/dev/leptonpru", O_RDWR | O_SYNC/* | O_NONBLOCK*/);
-	if (fd < 0) {
-		perror("open");
-		assert(0);
-	}
+    int fd, err;
+    int gpios = 0;
+    LeptonPruContext ctx;
 
-        if(LeptonPru_init(&ctx,fd) < 0) {
-		perror("LeptonPru_init");
-		assert(0);
-	}
+    open_gpios();
+    set_gpios(gpios);
 
-        int nn = 0;
-		
-	while(1) {
-		
-		err = LeptonPru_next_frame(&ctx);
-		if(err < 0) {
-			perror("LeptonPru_next_frame");
-			break;
-		}
-		if(err == 0) {
-			sleep(1);
-			continue;
-		}
-		printf("frame:%d min: %d, max: %d",
-			nn,ctx.curr_frame->min_val,ctx.curr_frame->max_val);
-		print_frame1(ctx.curr_frame->image);
-		
-		if(nn++ >= 4)
-			break;
-	}
+    fd = open("/dev/leptonpru", O_RDWR | O_SYNC/* | O_NONBLOCK*/);
+    if (fd < 0) {
+            perror("open");
+            assert(0);
+    }
 
-        if(LeptonPru_release(&ctx) < 0) {
-		perror("LeptonPru_release");
-	}
+    if(LeptonPru_init(&ctx,fd) < 0) {
+            perror("LeptonPru_init");
+            assert(0);
+    }
 
-	close(fd);
+    int nn = 0;
 
-	return 0;
+    while(1) {
+
+        err = LeptonPru_next_frame(&ctx);
+        if(err < 0) {
+                perror("LeptonPru_next_frame");
+                break;
+        }
+        if(err == 0) {
+                sleep(1);
+                continue;
+        }
+        print_frame1(ctx.curr_frame->image);
+
+        if(nn++ >= 4)
+                break;
+
+        gpios ^= 1;
+        set_gpios(gpios);
+
+    }
+
+    if(LeptonPru_release(&ctx) < 0) {
+        perror("LeptonPru_release");
+    }
+
+    close(fd);
+
+    close_gpios()
+
+    return 0;
 }
 
