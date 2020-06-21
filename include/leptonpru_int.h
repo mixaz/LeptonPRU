@@ -61,6 +61,8 @@ struct capture_context {
         uint32_t frames_dropped;
         uint32_t frames_received;
 
+        uint32_t state;
+
 	uint32_t list_start,list_end;	// start end end of frames queue in list_head
 
 	struct buflist list_head[FRAMES_NUMBER];	// frames cycle queue

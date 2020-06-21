@@ -92,6 +92,8 @@ volatile register uint32_t __R30;
 #define DPRAM_SHARED	0x00010000
 
 /* event definitions */
+#define SYSEV_PR1_ECAP_INTR_REQ 15
+
 #define SYSEV_PRU0_TO_ARM	16
 #define SYSEV_ARM_TO_PRU0	17
 

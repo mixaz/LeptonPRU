@@ -89,8 +89,6 @@ struct beaglelogicdev {
 	uint16_t from_bl_irq_1;
 	uint16_t from_bl_irq_2;
 
-	uint32_t pins_mask;
-
 	/* Private data */
 	struct device *p_dev; /* Parent platform device */
 
@@ -264,7 +262,7 @@ static int beaglelogic_send_cmd(struct beaglelogicdev *bldev, uint32_t cmd)
 #define TIMEOUT     1000000
 	uint32_t timeout = TIMEOUT;
 
-//	dev_info(dev, "command %d to PRU\n",cmd);
+	dev_info(dev, "command %d to PRU\n",cmd);
 
 	bldev->cxt_pru->cmd = cmd;
 
@@ -332,8 +330,10 @@ int beaglelogic_start(struct device *dev)
 
 	/* This mutex will be locked for the entire duration BeagleLogic runs */
 	mutex_lock(&bldev->mutex);
-
-	/* All set now. Start the PRUs and wait for IRQs */
+#if USE_PRUS == 1
+        beaglelogic_send_cmd(bldev, CMD_START);
+#endif
+        /* All set now. Start the PRUs and wait for IRQs */
 	bldev->state = STATE_BL_RUNNING;
 	bldev->lasterror = 0;
 
@@ -544,8 +544,8 @@ static ssize_t bl_state_show(struct device *dev,
 	struct beaglelogicdev *bldev = dev_get_drvdata(dev);
 
 	return scnprintf(buf, PAGE_SIZE, 
-		"state: %d, queue:%d, frames received: %d, dropped: %d\n",
-		bldev->state,
+		"state: %d (%d), queue:%d, frames received: %d, dropped: %d\n",
+		bldev->state, bldev->cxt_pru->state,
 		LIST_SIZE(bldev->cxt_pru->list_start,bldev->cxt_pru->list_end),
 		bldev->cxt_pru->frames_received,bldev->cxt_pru->frames_dropped);
 }

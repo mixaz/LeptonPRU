@@ -49,6 +49,7 @@
 /* Mapping sysevts to a channel. Each pair contains a sysevt, channel. */
 struct ch_map pru_intc_map[] = { {SYSEV_PRU0_TO_ARM, 2},
 				 {SYSEV_ARM_TO_PRU0, 0},
+				 {SYSEV_PR1_ECAP_INTR_REQ, 0},
 				 {SYSEV_PRU1_TO_PRU0, 0},
 				 {SYSEV_PRU0_TO_ARM_A, 4},
 				 {SYSEV_PRU0_TO_ARM_B, 5},
