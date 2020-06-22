@@ -89,9 +89,9 @@ void main()
 
     uint32_t packet;
 
-    uint16_t frames_count = 0;
-    leptonpru_mmap *mmap_buf = (leptonpru_mmap *)(cxt.list_head[0].dma_start_addr);
-    uint32_t *buffer_ptr = mmap_buf->image;
+    uint16_t frames_count;
+    leptonpru_mmap *mmap_buf;
+    uint32_t *buffer_ptr;
 
     while (1) {
         /* Process received command */
@@ -112,8 +112,6 @@ void main()
         }
 
         if (state_run == 1) {
-          *buffer_ptr++ = packet;
-          frames_count++;
           if (frames_count >= BUFFER_SIZE) {
             // if queue is full, let's re-write the last frame, to not stop the stream
             if (LIST_IS_FULL(cxt.list_start, cxt.list_end)) {
@@ -123,18 +121,21 @@ void main()
             LIST_COUNTER_INC(cxt.list_end);
             cxt.frames_received++;
             frames_count = 0;
-            mmap_buf = (leptonpru_mmap *)(cxt.list_head[cxt.list_end].dma_start_addr);
+            mmap_buf = (leptonpru_mmap *)(cxt.list_head[LIST_COUNTER_PSY(cxt.list_end)].dma_start_addr);
             buffer_ptr = mmap_buf->image;
 
             /* Signal completion */
             SIGNAL_EVENT(SYSEV_PRU0_TO_ARM_A);
           }
+          *buffer_ptr++ = packet;
+          frames_count++;
         }
         else if (state_run == 3) {
           frames_count = 0;
-          mmap_buf = (leptonpru_mmap *)(cxt.list_head[cxt.list_end].dma_start_addr);
+          // cxt.list_start, cxt.list_end are supposed to be set to 0 on host side
+          mmap_buf = (leptonpru_mmap *)(cxt.list_head[LIST_COUNTER_PSY(cxt.list_end)].dma_start_addr);
           buffer_ptr = mmap_buf->image;
-
+//          cxt.debug = buffer_ptr;
           state_run = 1;
         }
         else if (state_run == 2) {

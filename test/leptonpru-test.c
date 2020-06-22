@@ -30,12 +30,12 @@ static void open_gpios() {
     fprintf(io, "%d", 39);
     fflush(io);
 
-    iodir = fopen("/sys/class/gpio/gpio39/direction", "w");
+    iodir = fopen("/sys/class/gpio/gpio66/direction", "w");
     fseek(iodir, 0, SEEK_SET);
     fprintf(iodir, "out");
     fflush(iodir);
 
-    ioval = fopen("/sys/class/gpio/gpio39/value", "w");
+    ioval = fopen("/sys/class/gpio/gpio66/value", "w");
     fseek(ioval, 0, SEEK_SET);
 }
 
@@ -48,7 +48,7 @@ static void close_gpios() {
 static void print_frame1(uint32_t *buf) {
     int i;
     uint32_t bb, count, gpios;
-    printf("----------------\n");
+//    printf("----------------\n");
     for(i=0; i<BUFFER_SIZE; i++) {
         bb = buf[i];
         count = bb >> 16;
@@ -68,8 +68,8 @@ int main() {
     int gpios = 0;
     LeptonPruContext ctx;
 
-    open_gpios();
-    set_gpios(gpios);
+//    open_gpios();
+//    set_gpios(gpios);
 
     fd = open("/dev/leptonpru", O_RDWR | O_SYNC/* | O_NONBLOCK*/);
     if (fd < 0) {
@@ -97,11 +97,11 @@ int main() {
         }
         print_frame1(ctx.curr_frame->image);
 
-        if(nn++ >= 4)
+        if(nn++ >= 10)
                 break;
 
-        gpios ^= 1;
-        set_gpios(gpios);
+//        gpios ^= 1;
+//        set_gpios(gpios);
 
     }
 
@@ -111,7 +111,7 @@ int main() {
 
     close(fd);
 
-    close_gpios()
+//    close_gpios()
 
     return 0;
 }

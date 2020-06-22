@@ -191,10 +191,10 @@ static int beaglelogic_map_buffer(struct device *dev, struct logic_buffer *buf)
 	dma_addr = dma_map_single(dev, buf->buf, sizeof(leptonpru_mmap), DMA_FROM_DEVICE);
 
 	dev_info(dev,"beaglelogic_map_buffer: %x, addr: %x, size: %d\n",buf,dma_addr, sizeof(leptonpru_mmap));
-	
+
 	if (dma_mapping_error(dev, dma_addr))
 		goto fail;
-	
+
 	buf->phys_addr = dma_addr;
 	buf->state = STATE_BL_BUF_MAPPED;
 
@@ -222,7 +222,7 @@ static int beaglelogic_map_and_submit_all_buffers(struct device *dev)
 	dma_addr_t addr;
 
 	dev_info(dev,"beaglelogic_map_and_submit_all_buffers\n");
-	
+
 	/* Write buffer table to the PRU memory */
 	for (i = 0; i < FRAMES_NUMBER; i++) {
 		if (beaglelogic_map_buffer(dev, &bldev->buffers[i]))
@@ -300,7 +300,7 @@ irqreturn_t beaglelogic_serve_irq(int irqno, void *data)
 //	dev_info(dev,"Beaglelogic IRQ #%d\n", irqno);
 	if (irqno == bldev->from_bl_irq_1) {
 		wake_up_interruptible(&bldev->wait);
-	} 
+	}
 	else if (irqno == bldev->from_bl_irq_2) {
 		/* This interrupt occurs twice:
 		 *  1. After a successful configuration of PRU capture
@@ -327,9 +327,13 @@ irqreturn_t beaglelogic_serve_irq(int irqno, void *data)
 int beaglelogic_start(struct device *dev)
 {
 	struct beaglelogicdev *bldev = dev_get_drvdata(dev);
+        struct capture_context *cxt = bldev->cxt_pru;
 
 	/* This mutex will be locked for the entire duration BeagleLogic runs */
 	mutex_lock(&bldev->mutex);
+
+        cxt->list_start = cxt->list_end = 0;
+
 #if USE_PRUS == 1
         beaglelogic_send_cmd(bldev, CMD_START);
 #endif
@@ -414,13 +418,13 @@ ssize_t beaglelogic_f_read (struct file *filp, char __user *buf,
 	if (filp->f_flags & O_NONBLOCK) {
 		return 0;
 	}
-	
+
 	if (wait_event_interruptible(bldev->wait,
 			!LIST_IS_EMPTY(cxt->list_start,cxt->list_end)))
 		return -ERESTARTSYS;
-	
+
 	nn = LIST_COUNTER_PSY(cxt->list_start);
-	
+
 	if (copy_to_user(buf, &nn, 1))
 		return -EFAULT;
 	return 1;
@@ -433,7 +437,7 @@ ssize_t beaglelogic_f_write (struct file *filp, const char __user *buf,
 	struct beaglelogicdev *bldev = reader->bldev;
 	struct device *dev = bldev->miscdev.this_device;
 	uint8_t nn;
-	
+
 	if (bldev->state == STATE_BL_ERROR)
 		return -EIO;
 
@@ -445,7 +449,7 @@ ssize_t beaglelogic_f_write (struct file *filp, const char __user *buf,
 		return -EFAULT;
 
 //	dev_info(dev,"beaglelogic_f_write: nn=%d",nn);
-	
+
 	LIST_COUNTER_INC2(bldev->cxt_pru->list_start,nn);
 
 	return 1;
@@ -471,7 +475,7 @@ int beaglelogic_f_mmap(struct file *filp, struct vm_area_struct *vma)
 			(bldev->buffers[nn].phys_addr) >> PAGE_SHIFT,
 			sizeof(leptonpru_mmap),
 			vma->vm_page_prot);
-	
+
 	if (ret)
 		return -EINVAL;
 
@@ -542,12 +546,15 @@ static ssize_t bl_state_show(struct device *dev,
 		struct device_attribute *attr, char *buf)
 {
 	struct beaglelogicdev *bldev = dev_get_drvdata(dev);
+        struct capture_context *cxt = bldev->cxt_pru;
 
-	return scnprintf(buf, PAGE_SIZE, 
-		"state: %d (%d), queue:%d, frames received: %d, dropped: %d\n",
-		bldev->state, bldev->cxt_pru->state,
-		LIST_SIZE(bldev->cxt_pru->list_start,bldev->cxt_pru->list_end),
-		bldev->cxt_pru->frames_received,bldev->cxt_pru->frames_dropped);
+	return scnprintf(buf, PAGE_SIZE,
+		"state: %d, queue:%d (%d-%d), frames received: %d, dropped: %d, debug: %d\n",
+		bldev->state,
+		LIST_SIZE(cxt->list_start,cxt->list_end),
+		cxt->list_start,cxt->list_end,
+		cxt->frames_received,cxt->frames_dropped,
+		cxt->debug);
 }
 
 static ssize_t bl_state_store(struct device *dev,
@@ -561,7 +568,7 @@ static ssize_t bl_state_store(struct device *dev,
 		return -EINVAL;
 
 	dev_info(dev, "simulator command: %d\n",val);
-	
+
 	if (val == 1)
 		beaglelogic_start(dev);
 	else if (val == 0)
@@ -771,7 +778,7 @@ static int beaglelogic_probe(struct platform_device *pdev)
 //		dev_err(dev, "Failed to boot PRU1: %d\n", ret);
 //		goto fail_shutdown_pru0;
 //	}
-	
+
 	printk("Lepton PRU loaded and initializing\n");
 
 	/* Once done, register our misc device and link our private data */
@@ -787,7 +794,7 @@ static int beaglelogic_probe(struct platform_device *pdev)
 
 	/* Power on in disabled state */
 	bldev->state = STATE_BL_DISABLED;
-	
+
 	/* Capture context structure is at location 0000h in PRU0 SRAM */
 	bldev->cxt_pru = bldev->pru0sram.va + 0;
 
@@ -804,7 +811,7 @@ static int beaglelogic_probe(struct platform_device *pdev)
 
         beaglelogic_memalloc(dev);
         beaglelogic_map_and_submit_all_buffers(dev);
-	
+
 	/* Display our init'ed state */
 	dev_info(dev, "Lepton PRU initialized OK\n");
 
@@ -816,7 +823,7 @@ static int beaglelogic_probe(struct platform_device *pdev)
 	}
 
 	return 0;
-    
+
 faildereg:
 	misc_deregister(&bldev->miscdev);
 fail_shutdown_prus:

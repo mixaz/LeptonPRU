@@ -53,7 +53,7 @@ struct buflist {
 /* Shared structure containing PRU attributes */
 struct capture_context {
 	/* Magic bytes */
-	uint32_t magic;         // Magic bytes, should be 0x4C455054
+	uint32_t magic;         // Magic bytes, should be FW_MAGIC
 
 	uint32_t cmd;           // Command from Linux host to us
 	int32_t resp;           // Response code
@@ -61,7 +61,7 @@ struct capture_context {
         uint32_t frames_dropped;
         uint32_t frames_received;
 
-        uint32_t state;
+        uint32_t debug;
 
 	uint32_t list_start,list_end;	// start end end of frames queue in list_head
 

@@ -81,7 +81,8 @@
 				/* pin muxing */
                                 pinctrl-names = "default";
                                 /* for BBB */
-				pinctrl-0 = <&P8_12_pruout_pin &P9_27_pruin_pin &P9_30_pruin_pin>;
+//				pinctrl-0 = <&P8_12_pruout_pin &P9_27_pruin_pin &P9_30_pruin_pin>;
+				pinctrl-0 = <&P9_27_pruin_pin>;
 
                                 /* for PB */
 //				pinctrl-0 = <&P2_30_pruout_pin &P2_28_pruin_pin &P2_32_pruin_pin>;
@@ -109,15 +110,19 @@
 			};
 */
 			ocp {
+/*
 				P8_12_pinmux {
 					status = "disabled";
 				};
+*/
 				P9_27_pinmux {
 					status = "disabled";
 				};
+/*
 				P9_30_pinmux {
 					status = "disabled";
 				};
+*/
 			};
 /**/
 		};
