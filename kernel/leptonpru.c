@@ -297,7 +297,7 @@ irqreturn_t beaglelogic_serve_irq(int irqno, void *data)
 	struct device *dev = bldev->miscdev.this_device;
 	uint32_t state;
 
-//	dev_info(dev,"Beaglelogic IRQ #%d\n", irqno);
+	dev_info(dev,"Beaglelogic IRQ #%d\n", irqno);
 	if (irqno == bldev->from_bl_irq_1) {
 		wake_up_interruptible(&bldev->wait);
 	}
@@ -316,6 +316,7 @@ irqreturn_t beaglelogic_serve_irq(int irqno, void *data)
 			bldev->state = STATE_BL_ERROR;
 			return IRQ_HANDLED;
 		}
+                dev_info(dev, "waking up\n");
 		bldev->state = STATE_BL_INITIALIZED;
 		wake_up_interruptible(&bldev->wait);
 	}
@@ -407,7 +408,7 @@ ssize_t beaglelogic_f_read (struct file *filp, char __user *buf,
 			return -ENOEXEC;
 	}
 
-	if(!LIST_IS_EMPTY(cxt->list_start,cxt->list_end)) {
+	if (!LIST_IS_EMPTY(cxt->list_start,cxt->list_end)) {
 		nn = LIST_COUNTER_PSY(cxt->list_start);
 		if (copy_to_user(buf, &nn, 1))
 			return -EFAULT;
@@ -420,13 +421,20 @@ ssize_t beaglelogic_f_read (struct file *filp, char __user *buf,
 	}
 
 	if (wait_event_interruptible(bldev->wait,
-			!LIST_IS_EMPTY(cxt->list_start,cxt->list_end)))
+			!LIST_IS_EMPTY(cxt->list_start,cxt->list_end) || bldev->state != STATE_BL_RUNNING))
 		return -ERESTARTSYS;
+
+	if (bldev->state != STATE_BL_RUNNING) {
+	        // PRUSS stopped to stream data for some reason
+                dev_info(dev,"PRUSS stopped stream, state=%d, state_run=%d\n",bldev->state,cxt->state_run);
+                return -EIO;
+	}
 
 	nn = LIST_COUNTER_PSY(cxt->list_start);
 
 	if (copy_to_user(buf, &nn, 1))
 		return -EFAULT;
+
 	return 1;
 }
 
@@ -549,11 +557,14 @@ static ssize_t bl_state_show(struct device *dev,
         struct capture_context *cxt = bldev->cxt_pru;
 
 	return scnprintf(buf, PAGE_SIZE,
-		"state: %d, queue:%d (%d-%d), frames received: %d, dropped: %d, debug: %d\n",
+		"state: %d, state_run: %d, queue:%d (%d-%d), frames received: %d, dropped: %d, sample rate: %d, frames per file: %d, debug: %d\n",
 		bldev->state,
+                cxt->state_run,
 		LIST_SIZE(cxt->list_start,cxt->list_end),
 		cxt->list_start,cxt->list_end,
 		cxt->frames_received,cxt->frames_dropped,
+		cxt->sample_rate,
+		cxt->frames_in_file,
 		cxt->debug);
 }
 
@@ -562,7 +573,6 @@ static ssize_t bl_state_store(struct device *dev,
 {
 	struct beaglelogicdev *bldev = dev_get_drvdata(dev);
 	uint32_t val;
-	int ret;
 
 	if (kstrtouint(buf, 10, &val))
 		return -EINVAL;
@@ -578,6 +588,58 @@ static ssize_t bl_state_store(struct device *dev,
 	}
 
 	return count;
+}
+
+static ssize_t bl_sample_rate_show(struct device *dev,
+                             struct device_attribute *attr, char *buf)
+{
+  struct beaglelogicdev *bldev = dev_get_drvdata(dev);
+  struct capture_context *cxt = bldev->cxt_pru;
+
+  return scnprintf(buf, PAGE_SIZE,"%d\n",cxt->sample_rate);
+}
+
+static ssize_t bl_sample_rate_store(struct device *dev,
+                              struct device_attribute *attr, const char *buf, size_t count)
+{
+  struct beaglelogicdev *bldev = dev_get_drvdata(dev);
+  struct capture_context *cxt = bldev->cxt_pru;
+  uint32_t val;
+
+  if (kstrtouint(buf, 10, &val))
+    return -EINVAL;
+
+  dev_info(dev, "setting sample rate: %d\n",val);
+
+  cxt->sample_rate = val;
+
+  return count;
+}
+
+static ssize_t bl_frames_in_file_show(struct device *dev,
+                             struct device_attribute *attr, char *buf)
+{
+  struct beaglelogicdev *bldev = dev_get_drvdata(dev);
+  struct capture_context *cxt = bldev->cxt_pru;
+
+  return scnprintf(buf, PAGE_SIZE,"%d\n",cxt->frames_in_file);
+}
+
+static ssize_t bl_frames_in_file_store(struct device *dev,
+                              struct device_attribute *attr, const char *buf, size_t count)
+{
+  struct beaglelogicdev *bldev = dev_get_drvdata(dev);
+  struct capture_context *cxt = bldev->cxt_pru;
+  uint32_t val;
+
+  if (kstrtouint(buf, 10, &val))
+    return -EINVAL;
+
+  dev_info(dev, "setting frames per file: %d\n",val);
+
+  cxt->frames_in_file = val;
+
+  return count;
 }
 
 static ssize_t bl_buffers_show(struct device *dev,
@@ -630,12 +692,20 @@ static DEVICE_ATTR(buffers, S_IRUGO,
 static DEVICE_ATTR(lasterror, S_IRUGO,
 		bl_lasterror_show, NULL);
 
+static DEVICE_ATTR(sample_rate, S_IWUSR | S_IRUGO,
+		bl_sample_rate_show, bl_sample_rate_store);
+
+static DEVICE_ATTR(frames_in_file, S_IWUSR | S_IRUGO,
+		bl_frames_in_file_show, bl_frames_in_file_store);
+
 static struct attribute *beaglelogic_attributes[] = {
 	&dev_attr_bufunitsize.attr,
 	&dev_attr_memalloc.attr,
 	&dev_attr_state.attr,
 	&dev_attr_buffers.attr,
 	&dev_attr_lasterror.attr,
+	&dev_attr_sample_rate.attr,
+	&dev_attr_frames_in_file.attr,
 	NULL
 };
 
