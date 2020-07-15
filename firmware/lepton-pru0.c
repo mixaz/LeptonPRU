@@ -140,6 +140,7 @@ void main()
           // cxt.list_start, cxt.list_end are supposed to be set to 0 on host side
           mmap_buf = (leptonpru_mmap *)(cxt.list_head[LIST_COUNTER_PSY(cxt.list_end)].dma_start_addr);
           buffer_ptr = mmap_buf->image;
+          handle_command(CMD_CONFIGURE);
           state_run = 1;
         }
         else if (state_run == 2) {

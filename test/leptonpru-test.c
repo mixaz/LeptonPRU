@@ -16,6 +16,7 @@
 #include <unistd.h>
 #include <fcntl.h>
 #include <assert.h>
+#include <time.h>
 
 #include <sys/types.h>
 #include <sys/mman.h>
@@ -49,13 +50,17 @@ static void print_frame1(uint32_t *buf) {
     int i;
     uint32_t bb, count, gpios;
 //    printf("----------------\n");
-    for(i=0; i<BUFFER_SIZE; i++) {
+    for(i=0; i<10; i++) {
         bb = buf[i];
         count = bb >> 16;
         gpios = bb & 0xFFFF;
         printf("%04x:%04x ",count,gpios);
     }
-    printf("\n");
+    printf("...\n");
+}
+
+static void out_frame1(FILE *file, leptonpru_mmap *buf) {
+    fwrite(buf->image,sizeof(buf->image),1,file);
 }
 
 static void set_gpios(int val) {
@@ -82,13 +87,19 @@ int main() {
             assert(0);
     }
 
+    char file_name[100];
+    time_t t = time(NULL);
+    struct tm tm = *localtime(&t);
+    sprintf(file_name,"%04d-%03d-%02d%02d%02d", tm.tm_year + 1900, tm.tm_yday, tm.tm_hour, tm.tm_min, tm.tm_sec);
+
+    FILE *fout = fopen(file_name, "wb");
+
     int nn = 0;
 
     while(1) {
 
         err = LeptonPru_next_frame(&ctx);
         if(err < 0) {
-                perror("LeptonPru_next_frame");
                 break;
         }
         if(err == 0) {
@@ -96,14 +107,16 @@ int main() {
                 continue;
         }
         print_frame1(ctx.curr_frame->image);
-
-        if(nn++ >= 10)
-                break;
+        out_frame1(fout,ctx.curr_frame);
 
 //        gpios ^= 1;
 //        set_gpios(gpios);
 
     }
+
+    fclose(fout);
+
+    printf("Output file: %s\n",file_name);
 
     if(LeptonPru_release(&ctx) < 0) {
         perror("LeptonPru_release");
