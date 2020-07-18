@@ -68,10 +68,16 @@ static void set_gpios(int val) {
     fflush(ioval);
 }
 
-int main() {
+int main(int argc, char **argv) {
     int fd, err;
     int gpios = 0;
     LeptonPruContext ctx;
+
+    int frames_in_file = 10;
+
+    if (argc > 1) {
+        sscanf(argv[1], "%d", &frames_in_file);
+    }
 
 //    open_gpios();
 //    set_gpios(gpios);
@@ -87,12 +93,7 @@ int main() {
             assert(0);
     }
 
-    char file_name[100];
-    time_t t = time(NULL);
-    struct tm tm = *localtime(&t);
-    sprintf(file_name,"%04d-%03d-%02d%02d%02d", tm.tm_year + 1900, tm.tm_yday, tm.tm_hour, tm.tm_min, tm.tm_sec);
-
-    FILE *fout = fopen(file_name, "wb");
+    FILE *fout = NULL;
 
     int nn = 0;
 
@@ -100,23 +101,44 @@ int main() {
 
         err = LeptonPru_next_frame(&ctx);
         if(err < 0) {
-                break;
+            perror("LeptonPru_next_frame");
+            break;
         }
         if(err == 0) {
-                sleep(1);
-                continue;
+            sleep(1);
+            continue;
         }
+        if (fout == NULL) {
+            char file_name[100];
+            struct timespec ts;
+            ts.tv_sec = ctx.curr_frame->start_time / NANOSECONDS;
+            ts.tv_nsec = ctx.curr_frame->start_time % NANOSECONDS;
+            struct tm tm = *localtime(&ts.tv_sec);
+
+            sprintf(file_name,"%04d-%03d-%02d%02d%02d", tm.tm_year + 1900, tm.tm_yday, tm.tm_hour, tm.tm_min, tm.tm_sec);
+            printf("start_time: %llu\n",ctx.curr_frame->start_time);
+            printf("Writing file: %s\n",file_name);
+            fout = fopen(file_name, "wb");
+        }
+
         print_frame1(ctx.curr_frame->image);
         out_frame1(fout,ctx.curr_frame);
+
+        if (nn++ >= frames_in_file) {
+            fclose(fout);
+            fout = NULL;
+            nn = 0;
+        }
 
 //        gpios ^= 1;
 //        set_gpios(gpios);
 
     }
 
-    fclose(fout);
-
-    printf("Output file: %s\n",file_name);
+    if (fout != NULL) {
+        fclose(fout);
+        fout = NULL;
+    }
 
     if(LeptonPru_release(&ctx) < 0) {
         perror("LeptonPru_release");

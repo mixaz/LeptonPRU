@@ -88,6 +88,7 @@
 //				pinctrl-0 = <&P2_30_pruout_pin &P2_28_pruin_pin &P2_32_pruin_pin>;
 				/**/
 
+                pin-GPS-100HZ = <14>;
 			};
 		};
 	};

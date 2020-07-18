@@ -14,14 +14,17 @@
 #ifndef LEPTONPRU_H_
 #define LEPTONPRU_H_
 
+#define NANOSECONDS         1000000000L
+
 #define BUFFER_SIZE         1024
 
 /*
  * mmap buffer structure
  */
- typedef struct _leptonpru_mmap  {
-	 uint32_t image[BUFFER_SIZE];
- } leptonpru_mmap;
+typedef struct _leptonpru_mmap {
+    uint64_t start_time;
+    uint32_t image[BUFFER_SIZE];
+} leptonpru_mmap;
 
 // max frames number. Must be power of 2
 #define FRAMES_NUMBER 			4

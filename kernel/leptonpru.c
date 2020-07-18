@@ -46,6 +46,8 @@
 #include <linux/sysfs.h>
 #include <linux/fs.h>
 
+#include <linux/ktime.h>
+
 #include "leptonpru.h"
 #include "leptonpru_int.h"
 
@@ -325,25 +327,28 @@ irqreturn_t beaglelogic_serve_irq(int irqno, void *data)
 }
 
 /* Begin the sampling operation [This takes the mutex] */
-int beaglelogic_start(struct device *dev)
-{
-	struct beaglelogicdev *bldev = dev_get_drvdata(dev);
-        struct capture_context *cxt = bldev->cxt_pru;
+int beaglelogic_start(struct device *dev) {
+    struct beaglelogicdev *bldev = dev_get_drvdata(dev);
+    struct capture_context *cxt = bldev->cxt_pru;
 
-	/* This mutex will be locked for the entire duration BeagleLogic runs */
-	mutex_lock(&bldev->mutex);
+    /* This mutex will be locked for the entire duration BeagleLogic runs */
+    mutex_lock(&bldev->mutex);
 
-        cxt->list_start = cxt->list_end = 0;
+    cxt->start_time = ktime_get_real_ns();
+    dev_info(dev, "start_time = %llu\n", cxt->start_time);
+//    uint64_t tt = ktime_get_ns();
+//    cxt->start_time0 = tt & 0xFFFFFFFF;
+//    cxt->start_time1 = tt >> 32;
 
 #if USE_PRUS == 1
-        beaglelogic_send_cmd(bldev, CMD_START);
+    beaglelogic_send_cmd(bldev, CMD_START);
 #endif
-        /* All set now. Start the PRUs and wait for IRQs */
-	bldev->state = STATE_BL_RUNNING;
-	bldev->lasterror = 0;
+    /* All set now. Start the PRUs and wait for IRQs */
+    bldev->state = STATE_BL_RUNNING;
+    bldev->lasterror = 0;
 
-	dev_info(dev, "capture started\n");
-	return 0;
+    dev_info(dev, "capture started\n");
+    return 0;
 }
 
 /* Request stop. Stop will effect only after the last buffer is written out */
@@ -557,15 +562,14 @@ static ssize_t bl_state_show(struct device *dev,
         struct capture_context *cxt = bldev->cxt_pru;
 
 	return scnprintf(buf, PAGE_SIZE,
-		"state: %d, state_run: %d, queue:%d (%d-%d), frames received: %d, dropped: %d, sample rate: %d, frames per file: %d, debug: %d\n",
-		bldev->state,
-                cxt->state_run,
+		"state: %d, state_run: %d, queue:%d (%d-%d), frames received: %u, dropped: %u, sample rate: %d, max frames: %d, pin_gps_100hz: %d, debug: %u, debug1: %u\n",
+		bldev->state, cxt->state_run,
 		LIST_SIZE(cxt->list_start,cxt->list_end),
-		cxt->list_start,cxt->list_end,
-		cxt->frames_received,cxt->frames_dropped,
+		cxt->list_start, cxt->list_end,
+		cxt->frames_received, cxt->frames_dropped,
 		cxt->sample_rate,
-		cxt->frames_in_file,
-		cxt->debug);
+		cxt->max_frames,cxt->pin_gps_100hz,
+		cxt->debug, cxt->debug1);
 }
 
 static ssize_t bl_state_store(struct device *dev,
@@ -583,9 +587,8 @@ static ssize_t bl_state_store(struct device *dev,
 		beaglelogic_start(dev);
 	else if (val == 0)
 		beaglelogic_stop(dev);
-	else {
+	else
 		return -EINVAL;
-	}
 
 	return count;
 }
@@ -616,16 +619,16 @@ static ssize_t bl_sample_rate_store(struct device *dev,
   return count;
 }
 
-static ssize_t bl_frames_in_file_show(struct device *dev,
+static ssize_t bl_max_frames_show(struct device *dev,
                              struct device_attribute *attr, char *buf)
 {
   struct beaglelogicdev *bldev = dev_get_drvdata(dev);
   struct capture_context *cxt = bldev->cxt_pru;
 
-  return scnprintf(buf, PAGE_SIZE,"%d\n",cxt->frames_in_file);
+  return scnprintf(buf, PAGE_SIZE,"%d\n",cxt->max_frames);
 }
 
-static ssize_t bl_frames_in_file_store(struct device *dev,
+static ssize_t bl_max_frames_store(struct device *dev,
                               struct device_attribute *attr, const char *buf, size_t count)
 {
   struct beaglelogicdev *bldev = dev_get_drvdata(dev);
@@ -637,7 +640,59 @@ static ssize_t bl_frames_in_file_store(struct device *dev,
 
   dev_info(dev, "setting frames per file: %d\n",val);
 
-  cxt->frames_in_file = val;
+  cxt->max_frames = val;
+
+  return count;
+}
+
+static ssize_t bl_flags_show(struct device *dev,
+                             struct device_attribute *attr, char *buf)
+{
+  struct beaglelogicdev *bldev = dev_get_drvdata(dev);
+  struct capture_context *cxt = bldev->cxt_pru;
+
+  return scnprintf(buf, PAGE_SIZE,"%x\n",cxt->flags);
+}
+
+static ssize_t bl_flags_store(struct device *dev,
+                              struct device_attribute *attr, const char *buf, size_t count)
+{
+  struct beaglelogicdev *bldev = dev_get_drvdata(dev);
+  struct capture_context *cxt = bldev->cxt_pru;
+  uint32_t val;
+
+  if (kstrtouint(buf, 10, &val))
+    return -EINVAL;
+
+  dev_info(dev, "Setting flags: %x\n",val);
+
+  cxt->flags = val;
+
+  return count;
+}
+
+static ssize_t bl_pin_gps_100hz_show(struct device *dev,
+                             struct device_attribute *attr, char *buf)
+{
+  struct beaglelogicdev *bldev = dev_get_drvdata(dev);
+  struct capture_context *cxt = bldev->cxt_pru;
+
+  return scnprintf(buf, PAGE_SIZE,"%d\n",cxt->pin_gps_100hz);
+}
+
+static ssize_t bl_pin_gps_100hz_store(struct device *dev,
+                              struct device_attribute *attr, const char *buf, size_t count)
+{
+  struct beaglelogicdev *bldev = dev_get_drvdata(dev);
+  struct capture_context *cxt = bldev->cxt_pru;
+  uint32_t val;
+
+  if (kstrtouint(buf, 10, &val))
+    return -EINVAL;
+
+  dev_info(dev, "Setting pin for GPS 100 Hz: %d\n",val);
+
+  cxt->pin_gps_100hz = val;
 
   return count;
 }
@@ -695,8 +750,14 @@ static DEVICE_ATTR(lasterror, S_IRUGO,
 static DEVICE_ATTR(sample_rate, S_IWUSR | S_IRUGO,
 		bl_sample_rate_show, bl_sample_rate_store);
 
-static DEVICE_ATTR(frames_in_file, S_IWUSR | S_IRUGO,
-		bl_frames_in_file_show, bl_frames_in_file_store);
+static DEVICE_ATTR(max_frames, S_IWUSR | S_IRUGO,
+		bl_max_frames_show, bl_max_frames_store);
+
+static DEVICE_ATTR(flags, S_IWUSR | S_IRUGO,
+		bl_flags_show, bl_flags_store);
+
+static DEVICE_ATTR(pin_gps_100hz, S_IWUSR | S_IRUGO,
+		bl_pin_gps_100hz_show, bl_pin_gps_100hz_store);
 
 static struct attribute *beaglelogic_attributes[] = {
 	&dev_attr_bufunitsize.attr,
@@ -705,7 +766,9 @@ static struct attribute *beaglelogic_attributes[] = {
 	&dev_attr_buffers.attr,
 	&dev_attr_lasterror.attr,
 	&dev_attr_sample_rate.attr,
-	&dev_attr_frames_in_file.attr,
+	&dev_attr_max_frames.attr,
+	&dev_attr_flags.attr,
+	&dev_attr_pin_gps_100hz.attr,
 	NULL
 };
 
@@ -766,15 +829,6 @@ static int beaglelogic_probe(struct platform_device *pdev)
 			dev_err(dev, "unable to get PRU0: %d\n", ret);
 		goto fail_free;
 	}
-//	bldev->pru1 = pru_rproc_get(node, 1);
-//	if (IS_ERR(bldev->pru1)) {
-//		printk("LeptonPRU: remoteproc for PRU1 fails\n");
-//		ret = PTR_ERR(bldev->pru1);
-//		bldev->pru1 = NULL;
-//		if (ret != -EPROBE_DEFER)
-//			dev_err(dev, "unable to get PRU1: %d\n", ret);
-//		goto fail_put_pru0;
-//	}
 
 	bldev->pruss = pruss_get(bldev->pru0);
 	if (IS_ERR(bldev->pruss)) {
@@ -819,35 +873,11 @@ static int beaglelogic_probe(struct platform_device *pdev)
 		IRQF_ONESHOT, dev_name(dev), bldev);
 	if (ret) goto fail_free_irq1;
 
-
-	/* Set firmware and boot the PRUs */
-/*
-	ret = rproc_set_firmware(bldev->pru0, bldev->fw_data->fw_names[0]);
-	if (ret) {
-		dev_err(dev, "Failed to set PRU0 firmware %s: %d\n",
-			bldev->fw_data->fw_names[0], ret);
-		goto fail_free_irqs;
-	}
-
-	ret = rproc_set_firmware(bldev->pru1, bldev->fw_data->fw_names[1]);
-	if (ret) {
-		dev_err(dev, "Failed to set PRU1 firmware %s: %d\n",
-			bldev->fw_data->fw_names[1], ret);
-		goto fail_free_irqs;
-	}
-*/
-
 	ret = rproc_boot(bldev->pru0);
 	if (ret) {
 		dev_err(dev, "Failed to boot PRU0: %d\n", ret);
 		goto fail_free_irqs;
 	}
-
-//	ret = rproc_boot(bldev->pru1);
-//	if (ret) {
-//		dev_err(dev, "Failed to boot PRU1: %d\n", ret);
-//		goto fail_shutdown_pru0;
-//	}
 
 	printk("Lepton PRU loaded and initializing\n");
 
@@ -876,11 +906,17 @@ static int beaglelogic_probe(struct platform_device *pdev)
 		goto faildereg;
 	}
 
-        /* We got configuration from PRUs, now mark device init'd */
-        bldev->state = STATE_BL_INITIALIZED;
+//	ret = of_property_read_u32(node,"pin-GPS-100HZ",&bldev->cxt_pru->pin_gps_100hz);
+//	if (ret) {
+//		dev_err(&pdev->dev, "No pin-GPS-100HZ in DT\n");
+//        goto faildereg;
+//	}
+//
+    /* We got configuration from PRUs, now mark device init'd */
+    bldev->state = STATE_BL_INITIALIZED;
 
-        beaglelogic_memalloc(dev);
-        beaglelogic_map_and_submit_all_buffers(dev);
+    beaglelogic_memalloc(dev);
+    beaglelogic_map_and_submit_all_buffers(dev);
 
 	/* Display our init'ed state */
 	dev_info(dev, "Lepton PRU initialized OK\n");
