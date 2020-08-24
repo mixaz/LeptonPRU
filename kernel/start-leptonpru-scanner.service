@@ -1,0 +1,12 @@
+[Unit]
+Description=LeptonPRU scanner
+After=chrony-wait.service
+Requires=enable-leptonpru-pins.service
+
+[Service]
+Type=idle
+ExecStart=/home/debian/start-leptonpru-scanner.sh
+StandardOutput=null
+
+[Install]
+WantedBy=multi-user.target

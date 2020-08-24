@@ -3,8 +3,10 @@ Description=Enable LeptonPRU pins
 After=generic-board-startup.service
 
 [Service]
-Type=simple
-ExecStart=/usr/bin/enable-leptonpru-pins.sh
+Type=oneshot
+ExecStart=/home/debian/enable-leptonpru-pins.sh
+RemainAfterExit=yes
+StandardOutput=null
 
 [Install]
 WantedBy=multi-user.target

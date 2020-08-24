@@ -1,6 +1,6 @@
-# Makefile for LeptonPRU userland library
+# Makefile for LeptonPRU tests
 #
-# Copyright (C) 2018 Mikhail Zemlyanukha <gmixaz@gmail.com>
+# Copyright (C) 2018-2020 Mikhail Zemlyanukha <gmixaz@gmail.com>
 #
 # This program is free software; you can redistribute it and/or modify it
 # under the terms of the GNU General Public License as published by the
@@ -8,10 +8,13 @@
 # option) any later version.
 #
 
-all: leptonpru-test
+all: leptonpru-test sampler
 
 leptonpru-test: leptonpru-test.c ../library/libleptonpru.a
 	$(CC) -o leptonpru-test leptonpru-test.c ../library/libleptonpru.a -I../include
 
+sampler: sampler.c ../library/libleptonpru.a
+	$(CC) -o sampler sampler.c ../library/libleptonpru.a -I../include
+
 clean:
-	rm *.o leptonpru-test
+	rm *.o leptonpru-test sampler
