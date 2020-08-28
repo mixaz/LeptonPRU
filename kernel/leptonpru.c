@@ -299,7 +299,7 @@ irqreturn_t beaglelogic_serve_irq(int irqno, void *data)
 	struct device *dev = bldev->miscdev.this_device;
 	uint32_t state;
 
-	dev_info(dev,"Beaglelogic IRQ #%d\n", irqno);
+//	dev_info(dev,"Beaglelogic IRQ #%d\n", irqno);
 	if (irqno == bldev->from_bl_irq_1) {
 		wake_up_interruptible(&bldev->wait);
 	}
@@ -479,7 +479,7 @@ int beaglelogic_f_mmap(struct file *filp, struct vm_area_struct *vma)
 	unsigned long addr = vma->vm_start;
 	int size = vma->vm_end-addr;
 
-        nn = (vma->vm_pgoff << PAGE_SHIFT)/sizeof(leptonpru_mmap);
+	nn = (vma->vm_pgoff << PAGE_SHIFT)/sizeof(leptonpru_mmap);
 
 	dev_info(dev,"beaglelogic_f_mmap vm_start=%lx, size=%d, off=%ld, framebuf=%d\n",
 			addr,size,vma->vm_pgoff,nn);

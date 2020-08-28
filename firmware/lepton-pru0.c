@@ -53,9 +53,9 @@ struct capture_context volatile cxt __attribute__((location(0))) = {0};
 
 static uint8_t state_run;
 
-static uint16_t gps_100hz_count;
-static uint16_t gps_100hz_trigger;
-static uint16_t pin_gps_100hz_mask;
+static uint32_t gps_100hz_count;
+static uint8_t gps_100hz_trigger;
+static uint8_t pin_gps_100hz_mask;
 
 static uint16_t samples_count;
 static leptonpru_mmap *mmap_buf;
@@ -126,7 +126,8 @@ void main()
     while (1) {
 
         wait_for_pwm_timer();
-        packet  = (__R31 & 0xFFFF) | (gps_100hz_count << 16);
+        // get PRU0-7 pins and exclude gps_100hz signal,
+        packet  = (__R31 & (0xFF^pin_gps_100hz_mask)) | (gps_100hz_count << 8);
 
         cxt.start_time += cxt.sample_rate;
 
@@ -136,7 +137,9 @@ void main()
 
         if (gps_100hz_trigger != gps_100hz_trigger_new) {
             gps_100hz_trigger = gps_100hz_trigger_new;
-            gps_100hz_count++;
+            // count only raising edge of gps_100hz
+            if(gps_100hz_trigger_new)
+                gps_100hz_count++;
         }
 
         if (state_run == STATE_WAIT_GPS) {
