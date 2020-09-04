@@ -40,7 +40,7 @@
 /* Commands */
 #define CMD_START			1   /* start sampling */
 #define CMD_STOP			2   /* stop sampling */
-#define CMD_CONFIGURE   	3   /* configure */
+//#define CMD_CONFIGURE   	3   /* configure */
 
 /* Define magic bytes for the structure */
 #define FW_MAGIC	0x4C456060
@@ -62,11 +62,11 @@ struct capture_context {
     uint32_t cmd;           // Command from Linux host to us
     int32_t resp;           // Response code
 
-    uint32_t sample_rate;   // nano seconds
-    uint32_t max_frames;    // frames to capture, 0 to infinite
+//    uint32_t sample_rate;   // nano seconds
+//    uint32_t max_frames;    // frames to capture, 0 to infinite
     uint32_t pin_gps_100hz; // GPS 100 Hz pin in R31
 
-    uint32_t flags;
+//    uint32_t flags;
 
     uint32_t frames_dropped;
     uint32_t frames_received;

@@ -23,12 +23,9 @@
 
 #define STATE_STOP        0
 #define STATE_RUN         1
-#define STATE_WAIT_GPS    2
+#define STATE_WAIT_1PPS   2
 
 /* from https://gist.github.com/shirriff/2a7cf2f1adb37011da827f1c7f47b992 */
-#define DELAY_NS 500000 // Use 500000000 for 0.5 second delay
-#define COUNT_10MS 20   // counter for 100Hz calculated from DELAY_NS
-
 // PRU Interrupt control registers
 #define PRU_INTC 0x00020000 // Start of PRU INTC registers TRM 4.3.1.2
 #define PRU_INTC_GER ((volatile uint32_t *)(PRU_INTC + 0x10)) // Global Interrupt Enable, TRM 4.5.3.3
@@ -53,23 +50,24 @@ struct capture_context volatile cxt __attribute__((location(0))) = {0};
 
 static uint8_t state_run;
 
-static uint32_t gps_100hz_count;
 static uint8_t gps_100hz_trigger;
 static uint8_t pin_gps_100hz_mask;
 
 static uint16_t samples_count;
 static leptonpru_mmap *mmap_buf;
-static uint32_t *buffer_ptr;
+static uint8_t *buffer_ptr;
+
+static uint64_t curr_time;    // start time in nanosecs from EPOCH
 
 static void init_start(void) {
     cxt.frames_received = cxt.frames_dropped = 0;
     cxt.list_start = cxt.list_end = 0;
     samples_count = 0;
-    gps_100hz_count = 0;
-    gps_100hz_trigger = (uint16_t)(__R31 & pin_gps_100hz_mask);
     mmap_buf = (leptonpru_mmap *)(cxt.list_head[LIST_COUNTER_PSY(0)].dma_start_addr);
     buffer_ptr = mmap_buf->image;
-    mmap_buf->start_time = cxt.start_time;
+    mmap_buf->start_time = curr_time;
+    mmap_buf->sample_rate = DELAY_NS;
+    mmap_buf->frame_number = cxt.frames_received;
 }
 
 static void init_stop(void) {
@@ -92,14 +90,9 @@ static int handle_command(uint32_t cmd) {
             state_run = STATE_STOP;
             return 0;
         case CMD_START:
-            state_run = STATE_WAIT_GPS;
-            // fail through
-        case CMD_CONFIGURE:
-            if(cxt.sample_rate == 0) {
-              cxt.sample_rate = DELAY_NS;
-            }
             pin_gps_100hz_mask = (1 << cxt.pin_gps_100hz);
-            init_pwm();
+            gps_100hz_trigger = __R31 & pin_gps_100hz_mask;
+            state_run = STATE_WAIT_1PPS;
             return 0;
     }
     return -1;
@@ -117,38 +110,45 @@ void main()
     // stopped state
     state_run = STATE_STOP;
 
-    handle_command(CMD_CONFIGURE);
+//    handle_command(CMD_CONFIGURE);
 
-    uint32_t packet;
+    uint8_t packet;
 
-    uint16_t gps_100hz_trigger_new;
+    uint8_t gps_100hz_trigger_new;
+
+    init_pwm();
 
     while (1) {
 
-        wait_for_pwm_timer();
-        // get PRU0-7 pins and exclude gps_100hz signal,
-        packet  = (__R31 & (0xFF^pin_gps_100hz_mask)) | (gps_100hz_count << 8);
-
-        cxt.start_time += cxt.sample_rate;
-
-        gps_100hz_trigger_new = (uint16_t)(__R31 & pin_gps_100hz_mask);
-//        cxt.debug = gps_100hz_trigger_new;
-//        cxt.debug1 = pin_gps_100hz_mask;
-
-        if (gps_100hz_trigger != gps_100hz_trigger_new) {
-            gps_100hz_trigger = gps_100hz_trigger_new;
-            // count only raising edge of gps_100hz
-            if(gps_100hz_trigger_new)
-                gps_100hz_count++;
-        }
-
-        if (state_run == STATE_WAIT_GPS) {
-            if ((cxt.flags&FLAG_START_ON_GPS_100HZ)==0 || gps_100hz_trigger_new) {
-                init_start();
-                state_run = STATE_RUN;
+        if (state_run == STATE_WAIT_1PPS) {
+            if (cxt.cmd != 0) {
+                cxt.resp = handle_command(cxt.cmd);
+                cxt.cmd = 0;
+            }
+            if (cxt.state_run != state_run) {
+                cxt.state_run = state_run;
+            }
+            // wait for raising edge of 1PPS
+            gps_100hz_trigger_new = (uint8_t)(__R31 & pin_gps_100hz_mask);
+            if (gps_100hz_trigger^gps_100hz_trigger_new) {
+                if(gps_100hz_trigger_new) {
+                    // 1PPS starts on next second
+                    curr_time = (cxt.start_time / NANOSECONDS + 1) * NANOSECONDS;
+                    init_start();
+                    state_run = STATE_RUN;
+                    continue;
+                }
+                gps_100hz_trigger = gps_100hz_trigger_new;
             }
             continue;
         }
+        // now states that work on timer
+        wait_for_pwm_timer();
+        // get PRU0-7 pins
+        packet = __R31 & 0xFF;
+
+        curr_time += DELAY_NS;
+
         if (state_run == STATE_RUN) {
             if (samples_count >= BUFFER_SIZE) {
                 // if queue is full, let's re-write the last frame, to not stop the stream
@@ -162,17 +162,13 @@ void main()
                 samples_count = 0;
                 mmap_buf = (leptonpru_mmap *) (cxt.list_head[LIST_COUNTER_PSY(cxt.list_end)].dma_start_addr);
                 buffer_ptr = mmap_buf->image;
-                mmap_buf->start_time = cxt.start_time;
+                mmap_buf->start_time = curr_time;
+                mmap_buf->sample_rate = DELAY_NS;
+                mmap_buf->frame_number = cxt.frames_received;
 
                 /* Signal frame completion */
                 SIGNAL_EVENT(SYSEV_PRU0_TO_ARM_A);
 
-                // stop when needed number of frames collected
-                if (cxt.max_frames != 0 && cxt.frames_received - cxt.frames_dropped >= cxt.max_frames) {
-                    init_stop();
-                    state_run = STATE_STOP;
-                    continue;
-                }
             }
             *buffer_ptr++ = packet;
             samples_count++;
@@ -184,7 +180,7 @@ void main()
 // Every DELAY_NS nanoseconds, interrupt 15 will fire
 inline void init_pwm() {
     *PRU_INTC_GER = 1; // Enable global interrupts
-    *ECAP_APRD = cxt.sample_rate / 5 - 1; // Set the period in cycles of 5 ns
+    *ECAP_APRD = DELAY_NS / 5 - 1; // Set the period in cycles of 5 ns
     *ECAP_ECCTL2 = (1 << 9) /* APWM */ | (1 << 4) /* counting */;
     *ECAP_TSCTR = 0; // Clear counter
     *ECAP_ECEINT = 0x80; // Enable compare equal interrupt

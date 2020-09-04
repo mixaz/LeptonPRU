@@ -37,19 +37,19 @@ int LeptonPru_init(LeptonPruContext *ctx, int fd) {
     ctx->curr_frame = NULL;
 	
     for(i=0; i<FRAMES_NUMBER; i++) {
-	off = ((i*frame_size+psize-1)/psize) * psize;
-	mm = (leptonpru_mmap*)mmap(NULL, frame_size, PROT_READ, MAP_SHARED, fd, off);
-	if (mm == MAP_FAILED) {
-	    perror("LeptonPru_init: mmap");
-	    err = -1;
-            break;
-        }
-	ctx->frame_buffers[i] = mm;
-//	printf("%d: %x\n", i, ctx->frame_buffers[i]);
+        off = ((i*frame_size+psize-1)/psize) * psize;
+        mm = (leptonpru_mmap*)mmap(NULL, frame_size, PROT_READ, MAP_SHARED, fd, off);
+        if (mm == MAP_FAILED) {
+            perror("LeptonPru_init: mmap");
+            err = -1;
+                break;
+            }
+        ctx->frame_buffers[i] = mm;
+//    	printf("%d: %x\n", i, ctx->frame_buffers[i]);
     }
     if(err) {
-	ctx->err = err;
-	LeptonPru_release(ctx);
+        ctx->err = err;
+        LeptonPru_release(ctx);
     }
     return err;
 }
@@ -87,17 +87,20 @@ int LeptonPru_next_frame(LeptonPruContext *ctx) {
         ctx->curr_frame = NULL;
         cc = 1;
         ctx->err = write(ctx->fd,&cc,1);
+//        printf("writing %d\n",cc);
         if(ctx->err < 0) {
-	    return ctx->err;
+	        return ctx->err;
         }
     }
 
     ctx->err = read(ctx->fd,&cc,1);
+//    printf("reading %d\n",cc);
 
     if(ctx->err <= 0)
-	return ctx->err;
+	    return ctx->err;
 
     ctx->curr_frame = ctx->frame_buffers[cc];
+    ctx->cc = cc;
     return 1;
 }
 

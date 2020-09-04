@@ -8,7 +8,7 @@
 # option) any later version.
 #
 
-all: leptonpru-test sampler
+all: sampler
 
 leptonpru-test: leptonpru-test.c ../library/libleptonpru.a
 	$(CC) -o leptonpru-test leptonpru-test.c ../library/libleptonpru.a -I../include

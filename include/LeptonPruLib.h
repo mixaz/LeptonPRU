@@ -23,6 +23,7 @@ extern "C" {
 typedef struct {
     int fd;
     int err;
+    int cc;
     leptonpru_mmap *frame_buffers[FRAMES_NUMBER];
     leptonpru_mmap *curr_frame;
 } LeptonPruContext;

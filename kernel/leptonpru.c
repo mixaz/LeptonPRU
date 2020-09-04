@@ -14,6 +14,7 @@
 
 #include <asm/atomic.h>
 #include <asm/uaccess.h>
+#include <asm/div64.h>
 
 #include <linux/module.h>
 #include <linux/err.h>
@@ -331,14 +332,18 @@ int beaglelogic_start(struct device *dev) {
     struct beaglelogicdev *bldev = dev_get_drvdata(dev);
     struct capture_context *cxt = bldev->cxt_pru;
 
+    uint64_t time_ns, time_secs;
+
     /* This mutex will be locked for the entire duration BeagleLogic runs */
     mutex_lock(&bldev->mutex);
 
-    cxt->start_time = ktime_get_real_ns();
-    dev_info(dev, "start_time = %llu\n", cxt->start_time);
-//    uint64_t tt = ktime_get_ns();
-//    cxt->start_time0 = tt & 0xFFFFFFFF;
-//    cxt->start_time1 = tt >> 32;
+    // catch start of a second
+    time_ns = ktime_get_real_ns();
+    time_secs = do_div(time_ns,NANOSECONDS);
+    do {
+        time_ns = ktime_get_real_ns();
+    } while(time_secs == do_div(time_ns,NANOSECONDS));
+    cxt->start_time = time_ns;
 
 #if USE_PRUS == 1
     beaglelogic_send_cmd(bldev, CMD_START);
@@ -347,6 +352,7 @@ int beaglelogic_start(struct device *dev) {
     bldev->state = STATE_BL_RUNNING;
     bldev->lasterror = 0;
 
+    dev_info(dev, "start_time = %llu\n", cxt->start_time);
     dev_info(dev, "capture started\n");
     return 0;
 }
@@ -401,7 +407,7 @@ ssize_t beaglelogic_f_read (struct file *filp, char __user *buf,
 	struct logic_buffer_reader *reader = filp->private_data;
 	struct beaglelogicdev *bldev = reader->bldev;
 	struct device *dev = bldev->miscdev.this_device;
-	struct capture_context *cxt = bldev->cxt_pru;
+	volatile struct capture_context *cxt = bldev->cxt_pru;
 	uint8_t nn;
 
 	if (bldev->state == STATE_BL_ERROR)
@@ -562,13 +568,13 @@ static ssize_t bl_state_show(struct device *dev,
         struct capture_context *cxt = bldev->cxt_pru;
 
 	return scnprintf(buf, PAGE_SIZE,
-		"state: %d, state_run: %d, queue:%d (%d-%d), frames received: %u, dropped: %u, sample rate: %d, max frames: %d, pin_gps_100hz: %d, debug: %u, debug1: %u\n",
+		"state: %d, state_run: %d, queue:%d (%d-%d), frames received: %u, dropped: %u, sample rate: %d, pin_gps_100hz: %d, debug: %u, debug1: %u\n",
 		bldev->state, cxt->state_run,
 		LIST_SIZE(cxt->list_start,cxt->list_end),
 		cxt->list_start, cxt->list_end,
 		cxt->frames_received, cxt->frames_dropped,
-		cxt->sample_rate,
-		cxt->max_frames,cxt->pin_gps_100hz,
+		DELAY_NS,
+		cxt->pin_gps_100hz,
 		cxt->debug, cxt->debug1);
 }
 
@@ -591,84 +597,6 @@ static ssize_t bl_state_store(struct device *dev,
 		return -EINVAL;
 
 	return count;
-}
-
-static ssize_t bl_sample_rate_show(struct device *dev,
-                             struct device_attribute *attr, char *buf)
-{
-  struct beaglelogicdev *bldev = dev_get_drvdata(dev);
-  struct capture_context *cxt = bldev->cxt_pru;
-
-  return scnprintf(buf, PAGE_SIZE,"%d\n",cxt->sample_rate);
-}
-
-static ssize_t bl_sample_rate_store(struct device *dev,
-                              struct device_attribute *attr, const char *buf, size_t count)
-{
-  struct beaglelogicdev *bldev = dev_get_drvdata(dev);
-  struct capture_context *cxt = bldev->cxt_pru;
-  uint32_t val;
-
-  if (kstrtouint(buf, 10, &val))
-    return -EINVAL;
-
-  dev_info(dev, "setting sample rate: %d\n",val);
-
-  cxt->sample_rate = val;
-
-  return count;
-}
-
-static ssize_t bl_max_frames_show(struct device *dev,
-                             struct device_attribute *attr, char *buf)
-{
-  struct beaglelogicdev *bldev = dev_get_drvdata(dev);
-  struct capture_context *cxt = bldev->cxt_pru;
-
-  return scnprintf(buf, PAGE_SIZE,"%d\n",cxt->max_frames);
-}
-
-static ssize_t bl_max_frames_store(struct device *dev,
-                              struct device_attribute *attr, const char *buf, size_t count)
-{
-  struct beaglelogicdev *bldev = dev_get_drvdata(dev);
-  struct capture_context *cxt = bldev->cxt_pru;
-  uint32_t val;
-
-  if (kstrtouint(buf, 10, &val))
-    return -EINVAL;
-
-  dev_info(dev, "setting frames per file: %d\n",val);
-
-  cxt->max_frames = val;
-
-  return count;
-}
-
-static ssize_t bl_flags_show(struct device *dev,
-                             struct device_attribute *attr, char *buf)
-{
-  struct beaglelogicdev *bldev = dev_get_drvdata(dev);
-  struct capture_context *cxt = bldev->cxt_pru;
-
-  return scnprintf(buf, PAGE_SIZE,"%x\n",cxt->flags);
-}
-
-static ssize_t bl_flags_store(struct device *dev,
-                              struct device_attribute *attr, const char *buf, size_t count)
-{
-  struct beaglelogicdev *bldev = dev_get_drvdata(dev);
-  struct capture_context *cxt = bldev->cxt_pru;
-  uint32_t val;
-
-  if (kstrtouint(buf, 10, &val))
-    return -EINVAL;
-
-  dev_info(dev, "Setting flags: %x\n",val);
-
-  cxt->flags = val;
-
-  return count;
 }
 
 static ssize_t bl_pin_gps_100hz_show(struct device *dev,
@@ -747,15 +675,6 @@ static DEVICE_ATTR(buffers, S_IRUGO,
 static DEVICE_ATTR(lasterror, S_IRUGO,
 		bl_lasterror_show, NULL);
 
-static DEVICE_ATTR(sample_rate, S_IWUSR | S_IRUGO,
-		bl_sample_rate_show, bl_sample_rate_store);
-
-static DEVICE_ATTR(max_frames, S_IWUSR | S_IRUGO,
-		bl_max_frames_show, bl_max_frames_store);
-
-static DEVICE_ATTR(flags, S_IWUSR | S_IRUGO,
-		bl_flags_show, bl_flags_store);
-
 static DEVICE_ATTR(pin_gps_100hz, S_IWUSR | S_IRUGO,
 		bl_pin_gps_100hz_show, bl_pin_gps_100hz_store);
 
@@ -765,9 +684,6 @@ static struct attribute *beaglelogic_attributes[] = {
 	&dev_attr_state.attr,
 	&dev_attr_buffers.attr,
 	&dev_attr_lasterror.attr,
-	&dev_attr_sample_rate.attr,
-	&dev_attr_max_frames.attr,
-	&dev_attr_flags.attr,
 	&dev_attr_pin_gps_100hz.attr,
 	NULL
 };
