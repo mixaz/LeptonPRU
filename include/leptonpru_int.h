@@ -56,10 +56,13 @@ struct buflist {
 
 /* Shared structure containing PRU attributes */
 struct capture_context {
+    uint64_t start_time;    // start time in nanosecs from EPOCH
+
     /* Magic bytes */
     uint32_t magic;         // Magic bytes, should be FW_MAGIC
 
     uint32_t cmd;           // Command from Linux host to us
+
     int32_t resp;           // Response code
 
 //    uint32_t sample_rate;   // nano seconds
@@ -78,9 +81,6 @@ struct capture_context {
     uint32_t list_start, list_end;    // start end end of frames queue in list_head
 
     struct buflist list_head[FRAMES_NUMBER];    // frames cycle queue
-
-    uint64_t start_time;    // start time in nanosecs from EPOCH
-
 };
 
 enum beaglelogic_states {

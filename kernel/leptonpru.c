@@ -332,17 +332,18 @@ int beaglelogic_start(struct device *dev) {
     struct beaglelogicdev *bldev = dev_get_drvdata(dev);
     struct capture_context *cxt = bldev->cxt_pru;
 
-    uint64_t time_ns, time_secs;
+    uint64_t time_ns, time_secs, time_secs1;
 
     /* This mutex will be locked for the entire duration BeagleLogic runs */
     mutex_lock(&bldev->mutex);
 
     // catch start of a second
     time_ns = ktime_get_real_ns();
-    time_secs = do_div(time_ns,NANOSECONDS);
+    time_secs = time_ns; do_div(time_secs,NANOSECONDS);
     do {
         time_ns = ktime_get_real_ns();
-    } while(time_secs == do_div(time_ns,NANOSECONDS));
+        time_secs1 = time_ns; do_div(time_secs1,NANOSECONDS);
+    } while(time_secs == time_secs1);
     cxt->start_time = time_ns;
 
 #if USE_PRUS == 1
