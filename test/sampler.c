@@ -13,6 +13,7 @@
 
 #include <stdio.h>
 #include <stdint.h>
+#include <string.h>
 #include <unistd.h>
 #include <fcntl.h>
 #include <assert.h>
@@ -23,10 +24,8 @@
 
 #include "LeptonPruLib.h"
 
-#define PRU_PINS 8
-#define PRU_PINS_MASK 0xFF
-
 static uint8_t old_gpios = 0;
+static int32_t correction = 0;
 
 /*
  * Appends a record to file.
@@ -37,8 +36,16 @@ static int write_event(int gpio_num, leptonpru_mmap *frame, int packet_num, int 
     struct timespec ts;
 
     uint64_t curr_time = frame->start_time + packet_num*frame->sample_rate;
+
+    // FIXME: correction should be calculated before all pins,
+    // or it may be incorrect if PRU_PIN_1PPS != 0
+    if(correction != -1 && gpio_num == PRU_PIN_1PPS && event) {
+        // sync with 1PPS signal
+        correction = curr_time % NANOSECONDS;
+    }
+    curr_time -= correction;
+
     ts.tv_sec = curr_time / NANOSECONDS;
-    ts.tv_nsec = curr_time % NANOSECONDS;
 
     int msecs = (curr_time % NANOSECONDS) / 10000; //MICROSECONDS;
 
@@ -46,13 +53,13 @@ static int write_event(int gpio_num, leptonpru_mmap *frame, int packet_num, int 
 
     int seconds_after_midnight = tm.tm_hour*60*60 + tm.tm_min*60 + tm.tm_sec;
 
-    printf("%d: %05d.%05d %d\n", gpio_num, seconds_after_midnight, msecs, event);
+    printf("%d: %05d.%04d %d\n", gpio_num, seconds_after_midnight, msecs, event);
 //    printf("%d: %llu (%llu-%04d %d %05d) %05d.%05d %02d:%02d:%02d %d\n", gpio_num, curr_time, frame->start_time, packet_num, frame_num,
 //            frame->frame_number, seconds_after_midnight, msecs, tm.tm_hour, tm.tm_min, tm.tm_sec, event);
 
     sprintf(file_name,"%04d-%03d_%02d", tm.tm_year + 1900, tm.tm_yday, gpio_num);
     fout = fopen(file_name, "a");
-    fprintf(fout,"%05d.%05d %d\n", seconds_after_midnight, msecs, event);
+    fprintf(fout,"%05d.%04d %d\n", seconds_after_midnight, msecs, event);
     fclose(fout);
 }
 
@@ -81,6 +88,13 @@ static void process_frame(int frame_num, leptonpru_mmap *frame) {
 int main(int argc, char **argv) {
     int fd, err;
     LeptonPruContext ctx;
+
+    if(argc > 1) {
+        if(strcmp(argv[1],"0") == 0) {
+            correction = -1;
+            printf("1PPS correction disabled\n");
+        }
+    }
 
     fd = open("/dev/leptonpru", O_RDWR | O_SYNC/* | O_NONBLOCK*/);
     if (fd < 0) {

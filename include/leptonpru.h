@@ -21,6 +21,10 @@
 // Use 500000000 for 0.5 second delay
 #define DELAY_NS 100000
 
+#define PRU_PINS        8
+#define PRU_PINS_MASK   0xFF
+#define PRU_PIN_1PPS    0
+
 #define BUFFER_SIZE         (160*120*2)
 
 /*
