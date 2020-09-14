@@ -1,4 +1,5 @@
 #!/bin/bash
 
 cd /home/debian
-/home/debian/sampler
+insmod ./sampler
+./sampler
