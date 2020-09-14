@@ -47,7 +47,7 @@ static int write_event(int gpio_num, leptonpru_mmap *frame, int packet_num, int 
 
     ts.tv_sec = curr_time / NANOSECONDS;
 
-    int msecs = (curr_time % NANOSECONDS) / 10000; //MICROSECONDS;
+    int msecs = (curr_time % NANOSECONDS) / 100000; //MICROSECONDS;
 
     struct tm tm = *localtime(&ts.tv_sec);
 
