@@ -19,7 +19,7 @@
 #define MILLISECONDS        1000
 
 // Use 500000000 for 0.5 second delay
-#define DELAY_NS 100000
+#define DELAY_NS 10000
 
 #define PRU_PINS        8
 #define PRU_PINS_MASK   0xFF

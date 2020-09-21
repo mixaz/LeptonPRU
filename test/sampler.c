@@ -47,19 +47,19 @@ static int write_event(int gpio_num, leptonpru_mmap *frame, int packet_num, int 
 
     ts.tv_sec = curr_time / NANOSECONDS;
 
-    int msecs = (curr_time % NANOSECONDS) / 100000; //MICROSECONDS;
+    int msecs = (curr_time % NANOSECONDS) / 10000; //MICROSECONDS;
 
     struct tm tm = *localtime(&ts.tv_sec);
 
     int seconds_after_midnight = tm.tm_hour*60*60 + tm.tm_min*60 + tm.tm_sec;
 
-    printf("%d: %05d.%04d %d\n", gpio_num, seconds_after_midnight, msecs, event);
+    printf("%d: %05d.%05d %d\n", gpio_num, seconds_after_midnight, msecs, event);
 //    printf("%d: %llu (%llu-%04d %d %05d) %05d.%05d %02d:%02d:%02d %d\n", gpio_num, curr_time, frame->start_time, packet_num, frame_num,
 //            frame->frame_number, seconds_after_midnight, msecs, tm.tm_hour, tm.tm_min, tm.tm_sec, event);
 
     sprintf(file_name,"%04d-%03d_%02d", tm.tm_year + 1900, tm.tm_yday, gpio_num);
     fout = fopen(file_name, "a");
-    fprintf(fout,"%05d.%04d %d\n", seconds_after_midnight, msecs, event);
+    fprintf(fout,"%05d.%05d %d\n", seconds_after_midnight, msecs, event);
     fclose(fout);
 }
 
