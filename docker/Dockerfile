@@ -2,7 +2,7 @@
 #
 # This file is a part of the LeptonPRU project.
 #
-# Copyright (C) 2018-2019 Mikhail Zemlyanukha <gmixaz@gmail.com>
+# Copyright (C) 2018-2020 Mikhail Zemlyanukha <gmixaz@gmail.com>
 #
 # This program is free software; you can redistribute it and/or modify it
 # under the terms of the GNU General Public License as published by the
@@ -16,7 +16,7 @@ ENV DEFAULT_DOCKCROSS_IMAGE leptonpru
 ENV PRU_CGT=/usr/share/ti-cgt-pru_2.3.1 \
     PRU_SP_PATH=/usr/lib/ti/pru-software-support-package-5.1.0
 
-RUN apt-get install -y libc6-i386 lzop
+RUN apt-get install -y libc6-i386 lzop libssl-dev
 
 RUN curl -o pru-software-support-package_5.1.0.tar.gz -L https://github.com/bbvch/pru-software-support-package/archive/v5.1.0.tar.gz && \
     mkdir /usr/lib/ti && \
