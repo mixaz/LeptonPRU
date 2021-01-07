@@ -337,13 +337,10 @@ Telemetry is not supported.
 
 Some useful links just in case:
 
-* [BEAGLEBONE PRU CODE IN C](http://catch22.eu/beaglebone/beaglebone-pru-c/) - highly recommended, please read! and check there other articles as well, how to use prussdrv
-* [TI PRU Training, LAB 5](http://processors.wiki.ti.com/index.php/PRU_Training:_Hands-on_Labs#LAB_5:_RPMsg_Communication_between_ARM_and_PRU)
 * [BeagleLogic: Building a logic analyzer with the PRUs](http://theembeddedkitchen.net/beaglelogic-building-a-logic-analyzer-with-the-prus-part-1/449)
 * [BeagleLogic at github](https://github.com/abhishek-kakkar/BeagleLogic)
 * [Ti AM33XX PRUSSv2 on eLinux.org](https://elinux.org/Ti_AM33XX_PRUSSv2)
 * [PRU Cookbook](https://markayoder.github.io/PRUCookbook/)
-* [Beaglebone PRU shared memory in C](http://catch22.eu/beaglebone/beaglebone-pru-ipc/)
 * [Beaglebone PRU DMA support](https://github.com/maciejjo/beaglebone-pru-dma)
 * [Using Device Trees To Configure PRU IO Pins](http://www.ofitselfso.com/BeagleNotes/UsingDeviceTreesToConfigurePRUIOPins.php)
 * [Simple MMAP implementation for Linux driver](https://stackoverflow.com/a/45645732/1028256)
