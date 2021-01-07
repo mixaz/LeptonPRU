@@ -8,13 +8,10 @@
 # option) any later version.
 #
 
-all: sampler
+all: stream2pru
 
-leptonpru-test: leptonpru-test.c ../library/libleptonpru.a
-	$(CC) -o leptonpru-test leptonpru-test.c ../library/libleptonpru.a -I../include
-
-sampler: sampler.c ../library/libleptonpru.a
-	$(CC) -o sampler sampler.c ../library/libleptonpru.a -I../include
+stream2pru: stream2pru.c ../library/libleptonpru.a
+	$(CC) -o stream2pru stream2pru.c ../library/libleptonpru.a -I../include
 
 clean:
-	rm *.o leptonpru-test sampler
+	rm *.o stream2pru

@@ -1,0 +1,12 @@
+[Unit]
+Description=Stream /dev/random to SPI0 in slave mode
+Wants=sys-devices-virtual-misc-leptonpru.device
+After=sys-devices-virtual-misc-leptonpru.device
+
+[Service]
+Type=idle
+ExecStart=/home/debian/start-stream2pru.sh
+StandardOutput=null
+
+[Install]
+WantedBy=multi-user.target

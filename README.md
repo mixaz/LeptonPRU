@@ -337,7 +337,7 @@ Telemetry is not supported.
 
 Some useful links just in case:
 
-* [BEAGLEBONE PRU CODE IN C](http://catch22.eu/beaglebone/beaglebone-pru-c/) - highly recommended, please read! and check there other articles as well, how to use prussdrv
+* [BEAGLEBONE PRU CODE IN C](http://catch22.eu/beaglebone/beaglebone-pru-c/)
 * [TI PRU Training, LAB 5](http://processors.wiki.ti.com/index.php/PRU_Training:_Hands-on_Labs#LAB_5:_RPMsg_Communication_between_ARM_and_PRU)
 * [BeagleLogic: Building a logic analyzer with the PRUs](http://theembeddedkitchen.net/beaglelogic-building-a-logic-analyzer-with-the-prus-part-1/449)
 * [BeagleLogic at github](https://github.com/abhishek-kakkar/BeagleLogic)

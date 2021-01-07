@@ -83,7 +83,7 @@ struct beaglelogicdev {
 
 	/* Handle to pruss structure and PRU0 SRAM */
 	struct pruss *pruss;
-	struct rproc *pru0;//, *pru1;
+	struct rproc *pru0;
 	struct pruss_mem_region pru0sram;
 	const struct beaglelogic_private_data *fw_data;
 
@@ -191,7 +191,7 @@ static int beaglelogic_map_buffer(struct device *dev, struct logic_buffer *buf)
 	if (buf->state == STATE_BL_BUF_MAPPED)
 		return 0;
 
-	dma_addr = dma_map_single(dev, buf->buf, sizeof(leptonpru_mmap), DMA_FROM_DEVICE);
+	dma_addr = dma_map_single(dev, buf->buf, sizeof(leptonpru_mmap), DMA_TO_DEVICE);
 
 	dev_info(dev,"beaglelogic_map_buffer: %x, addr: %x, size: %d\n",buf,dma_addr, sizeof(leptonpru_mmap));
 
@@ -211,7 +211,7 @@ static void beaglelogic_unmap_buffer(struct device *dev,
                                      struct logic_buffer *buf)
 {
 	dev_info(dev,"beaglelogic_unmap_buffer: %x - %x\n",buf,buf->phys_addr);
-	dma_unmap_single(dev, buf->phys_addr, sizeof(leptonpru_mmap), DMA_FROM_DEVICE);
+	dma_unmap_single(dev, buf->phys_addr, sizeof(leptonpru_mmap), DMA_TO_DEVICE);
 	buf->state = STATE_BL_BUF_UNMAPPED;
 }
 
@@ -332,19 +332,8 @@ int beaglelogic_start(struct device *dev) {
     struct beaglelogicdev *bldev = dev_get_drvdata(dev);
     struct capture_context *cxt = bldev->cxt_pru;
 
-    uint64_t time_ns, time_secs, time_secs1;
-
     /* This mutex will be locked for the entire duration BeagleLogic runs */
     mutex_lock(&bldev->mutex);
-
-    // catch start of a second
-    time_ns = ktime_get_real_ns();
-    time_secs = time_ns; do_div(time_secs,NANOSECONDS);
-    do {
-        time_ns = ktime_get_real_ns();
-        time_secs1 = time_ns; do_div(time_secs1,NANOSECONDS);
-    } while(time_secs == time_secs1);
-    cxt->start_time = time_ns;
 
 #if USE_PRUS == 1
     beaglelogic_send_cmd(bldev, CMD_START);
@@ -353,7 +342,6 @@ int beaglelogic_start(struct device *dev) {
     bldev->state = STATE_BL_RUNNING;
     bldev->lasterror = 0;
 
-    dev_info(dev, "start_time = %llu\n", cxt->start_time);
     dev_info(dev, "capture started\n");
     return 0;
 }
@@ -392,11 +380,14 @@ static int beaglelogic_f_open(struct inode *inode, struct file *filp)
 	struct logic_buffer_reader *reader;
 	struct beaglelogicdev *bldev = to_beaglelogicdev(filp->private_data);
 	struct device *dev = bldev->miscdev.this_device;
+    struct capture_context *cxt = bldev->cxt_pru;
 
 	reader = devm_kzalloc(dev, sizeof(*reader), GFP_KERNEL);
 	reader->bldev = bldev;
 
 	filp->private_data = reader;
+
+	cxt->list_start = cxt->list_end = 0;
 
 	return 0;
 }
@@ -420,8 +411,8 @@ ssize_t beaglelogic_f_read (struct file *filp, char __user *buf,
 			return -ENOEXEC;
 	}
 
-	if (!LIST_IS_EMPTY(cxt->list_start,cxt->list_end)) {
-		nn = LIST_COUNTER_PSY(cxt->list_start);
+	if (!LIST_IS_FULL(cxt->list_start,cxt->list_end)) {
+		nn = LIST_COUNTER_PSY(cxt->list_end);
 		if (copy_to_user(buf, &nn, 1))
 			return -EFAULT;
 		return 1;
@@ -433,17 +424,16 @@ ssize_t beaglelogic_f_read (struct file *filp, char __user *buf,
 	}
 
 	if (wait_event_interruptible(bldev->wait,
-			!LIST_IS_EMPTY(cxt->list_start,cxt->list_end) || bldev->state != STATE_BL_RUNNING))
+			!LIST_IS_FULL(cxt->list_start,cxt->list_end) || bldev->state != STATE_BL_RUNNING))
 		return -ERESTARTSYS;
 
 	if (bldev->state != STATE_BL_RUNNING) {
-	        // PRUSS stopped to stream data for some reason
-                dev_info(dev,"PRUSS stopped stream, state=%d, state_run=%d\n",bldev->state,cxt->state_run);
-                return -EIO;
+        // PRUSS stopped to stream data for some reason
+        dev_info(dev,"PRUSS stopped stream, state=%d, state_run=%d\n",bldev->state,cxt->state_run);
+        return -EIO;
 	}
 
-	nn = LIST_COUNTER_PSY(cxt->list_start);
-
+	nn = LIST_COUNTER_PSY(cxt->list_end);
 	if (copy_to_user(buf, &nn, 1))
 		return -EFAULT;
 
@@ -470,7 +460,7 @@ ssize_t beaglelogic_f_write (struct file *filp, const char __user *buf,
 
 //	dev_info(dev,"beaglelogic_f_write: nn=%d",nn);
 
-	LIST_COUNTER_INC2(bldev->cxt_pru->list_start,nn);
+	LIST_COUNTER_INC2(bldev->cxt_pru->list_end,nn);
 
 	return 1;
 }
@@ -513,7 +503,7 @@ unsigned int beaglelogic_f_poll(struct file *filp,
 	if (bldev->state != STATE_BL_RUNNING)
 		return -ENOEXEC;
 
-	if(!LIST_IS_EMPTY(bldev->cxt_pru->list_start,bldev->cxt_pru->list_end)) {
+	if(!LIST_IS_FULL(bldev->cxt_pru->list_start,bldev->cxt_pru->list_end)) {
 		return (POLLIN | POLLRDNORM);
 	}
 
@@ -569,14 +559,12 @@ static ssize_t bl_state_show(struct device *dev,
         struct capture_context *cxt = bldev->cxt_pru;
 
 	return scnprintf(buf, PAGE_SIZE,
-		"state: %d, state_run: %d, queue:%d (%d-%d), frames received: %u, dropped: %u, sample rate: %d, pin_gps_100hz: %d, debug: %u, debug1: %u\n",
+		"state: %d, state_run: %d, queue:%d (%d-%d), frames received: %u, dropped: %u, unexpected CS: %u, debug: %u\n",
 		bldev->state, cxt->state_run,
 		LIST_SIZE(cxt->list_start,cxt->list_end),
 		cxt->list_start, cxt->list_end,
-		cxt->frames_received, cxt->frames_dropped,
-		DELAY_NS,
-		cxt->pin_gps_100hz,
-		cxt->debug, cxt->debug1);
+		cxt->frames_received, cxt->frames_dropped, cxt->unexpected_cs,
+		cxt->debug);
 }
 
 static ssize_t bl_state_store(struct device *dev,
@@ -600,32 +588,6 @@ static ssize_t bl_state_store(struct device *dev,
 	return count;
 }
 
-static ssize_t bl_pin_gps_100hz_show(struct device *dev,
-                             struct device_attribute *attr, char *buf)
-{
-  struct beaglelogicdev *bldev = dev_get_drvdata(dev);
-  struct capture_context *cxt = bldev->cxt_pru;
-
-  return scnprintf(buf, PAGE_SIZE,"%d\n",cxt->pin_gps_100hz);
-}
-
-static ssize_t bl_pin_gps_100hz_store(struct device *dev,
-                              struct device_attribute *attr, const char *buf, size_t count)
-{
-  struct beaglelogicdev *bldev = dev_get_drvdata(dev);
-  struct capture_context *cxt = bldev->cxt_pru;
-  uint32_t val;
-
-  if (kstrtouint(buf, 10, &val))
-    return -EINVAL;
-
-  dev_info(dev, "Setting pin for GPS 100 Hz: %d\n",val);
-
-  cxt->pin_gps_100hz = val;
-
-  return count;
-}
-
 static ssize_t bl_buffers_show(struct device *dev,
 		struct device_attribute *attr, char *buf)
 {
@@ -642,8 +604,7 @@ static ssize_t bl_buffers_show(struct device *dev,
 		cnt += c;
 		buf += c;
 	}
-	c = scnprintf(buf, PAGE_SIZE, "size=%d\n",
-		LIST_SIZE(cxt->list_start,cxt->list_end));
+	c = scnprintf(buf, PAGE_SIZE, "size=%d\n",  LIST_SIZE(cxt->list_start,cxt->list_end));
 	cnt += c;
 
 	return cnt;
@@ -676,16 +637,12 @@ static DEVICE_ATTR(buffers, S_IRUGO,
 static DEVICE_ATTR(lasterror, S_IRUGO,
 		bl_lasterror_show, NULL);
 
-static DEVICE_ATTR(pin_gps_100hz, S_IWUSR | S_IRUGO,
-		bl_pin_gps_100hz_show, bl_pin_gps_100hz_store);
-
 static struct attribute *beaglelogic_attributes[] = {
 	&dev_attr_bufunitsize.attr,
 	&dev_attr_memalloc.attr,
 	&dev_attr_state.attr,
 	&dev_attr_buffers.attr,
 	&dev_attr_lasterror.attr,
-	&dev_attr_pin_gps_100hz.attr,
 	NULL
 };
 
@@ -927,6 +884,6 @@ static struct platform_driver beaglelogic_driver = {
 module_platform_driver(beaglelogic_driver);
 
 MODULE_AUTHOR("Mikhail Zemlyanukha <gmixaz@gmail.com>");
-MODULE_DESCRIPTION("PRU GPIOs sampler");
+MODULE_DESCRIPTION("PRU GPIOs streamer");
 MODULE_LICENSE("GPL");
 MODULE_VERSION(DRV_VERSION);

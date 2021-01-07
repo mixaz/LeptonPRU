@@ -1,7 +1,5 @@
 /*
- * PRU sampler.
- *
- * This file is a part of the LeptonPRU project.
+ * Userland app to stream data from a file to pins using PRU
  *
  * Copyright (C) 2020 Mikhail Zemlyanukha <gmixaz@gmail.com>
  *
@@ -24,84 +22,28 @@
 
 #include "LeptonPruLib.h"
 
-static uint8_t old_gpios = 0;
-static int32_t correction = 0;
-
-/*
- * Appends a record to file.
- */
-static int write_event(int gpio_num, leptonpru_mmap *frame, int packet_num, int frame_num, int event) {
-    FILE *fout = NULL;
-    char file_name[20];
-    struct timespec ts;
-
-    uint64_t curr_time = frame->start_time + packet_num*frame->sample_rate;
-
-    // FIXME: correction should be calculated before all pins,
-    // or it may be incorrect if PRU_PIN_1PPS != 0
-    if(correction != -1 && gpio_num == PRU_PIN_1PPS && event) {
-        // sync with 1PPS signal
-        correction = curr_time % NANOSECONDS;
-    }
-    curr_time -= correction;
-
-    ts.tv_sec = curr_time / NANOSECONDS;
-
-    int msecs = (curr_time % NANOSECONDS) / 10000; //MICROSECONDS;
-
-    struct tm tm = *localtime(&ts.tv_sec);
-
-    int seconds_after_midnight = tm.tm_hour*60*60 + tm.tm_min*60 + tm.tm_sec;
-
-    printf("%d: %05d.%05d %d\n", gpio_num, seconds_after_midnight, msecs, event);
-//    printf("%d: %llu (%llu-%04d %d %05d) %05d.%05d %02d:%02d:%02d %d\n", gpio_num, curr_time, frame->start_time, packet_num, frame_num,
-//            frame->frame_number, seconds_after_midnight, msecs, tm.tm_hour, tm.tm_min, tm.tm_sec, event);
-
-    sprintf(file_name,"%04d-%03d_%02d", tm.tm_year + 1900, tm.tm_yday, gpio_num);
-    fout = fopen(file_name, "a");
-    fprintf(fout,"%05d.%05d %d\n", seconds_after_midnight, msecs, event);
-    fclose(fout);
-}
-
-static uint64_t prev_start_time = 0L;
-
-static void process_frame(int frame_num, leptonpru_mmap *frame) {
-    int i,j;
-    uint8_t gpios;
-    uint8_t mask;
-    if(frame->start_time <= prev_start_time) {
-        printf("frame time mismatch: old %llu new %llu\n");
-    }
-    for(i=0; i<BUFFER_SIZE; i++) {
-        gpios = frame->image[i];
-        mask = 1;
-        for(j=0; j<PRU_PINS; j++) {
-            if((gpios&mask) ^ (old_gpios&mask)) {
-                write_event(j, frame, i, frame_num, (gpios&mask) ? 1 : 0);
-            }
-            mask <<= 1;
-        }
-        old_gpios = gpios;
-    }
-}
-
 int main(int argc, char **argv) {
-    int fd, err;
+    int fd, file_in, err;
     LeptonPruContext ctx;
 
-    if(argc > 1) {
-        if(strcmp(argv[1],"0") == 0) {
-            correction = -1;
-            printf("1PPS correction disabled\n");
-        }
+    if (argc < 2) {
+        perror("stream2pru <path_to_file>");
+        assert(0);
     }
 
-    fd = open("/dev/leptonpru", O_RDWR | O_SYNC/* | O_NONBLOCK*/);
+    file_in = open(argv[1], O_RDONLY | O_SYNC /* | O_NONBLOCK*/);
     if (fd < 0) {
-            perror("open");
+            printf("Can't open input file %s",argv[1]);
             assert(0);
     }
 
+    fd = open("/dev/leptonpru", O_RDWR | O_SYNC /* | O_NONBLOCK*/);
+    if (fd < 0) {
+            perror("Can't open /dev/leptonpru");
+            assert(0);
+    }
+
+    // leptonpru kernel module may need some time to start
     sleep(1);
 
     if(LeptonPru_init(&ctx,fd) < 0) {
@@ -111,21 +53,22 @@ int main(int argc, char **argv) {
 
     while(1) {
         err = LeptonPru_next_frame(&ctx);
-        if(err < 0) {
+        if(err <= 0) {
             perror("LeptonPru_next_frame");
             break;
         }
-        if(err == 0) {
-            sleep(1);
-            continue;
+        err = read(file_in,ctx.curr_frame->image,sizeof(ctx.curr_frame->image));
+        if(err <= 0) {
+            perror("read from input failed");
+            break;
         }
-        process_frame(ctx.cc,ctx.curr_frame);
     }
 
     if(LeptonPru_release(&ctx) < 0) {
         perror("LeptonPru_release");
     }
 
+    close(file_in);
     close(fd);
 
     return 0;

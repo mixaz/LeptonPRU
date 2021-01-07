@@ -1,9 +1,19 @@
 /*
- * PRU Firmware for IR camera FLIR Lepton 3.
+ * Streaming SPI Slave on PRU.
+ * CPOL=0, CPHA=0, CS=0
  *
- * This file is a part of the LeptonPRU project.
+ * PRU outputs to SPI0 in GPIO mode (not in PRU direct mode), SPI0 pins are not available in this mode.
+ * This is due to existing hardware PCB already using SPI0. For a 'right' solution proper pins (ie SPI1)
+ * should be used instead, in PRU direct mode.
  *
- * Copyright (C) 2018-2020 Mikhail Zemlyanukha <gmixaz@gmail.com>
+ * PRU receives data from a cycle buffer (mapped via mmap to user space) of "frames". If the buffer overruns,
+ * it's OK and userland app will be blocked in a write operation, till a free frame appears.
+ * If the buffer under runs (gets empty) it means that the userland app can't fill in the buffer with proper speed,
+ * it is counted as an error.
+ *
+ * If packet size (for low CS) is not multiple of 8 then it is also counted as an error.
+ *
+ * Copyright (C) 2020 Mikhail Zemlyanukha <gmixaz@gmail.com>
  *
  * This program is free software; you can redistribute it and/or modify it
  * under the terms of the GNU General Public License as published by the
@@ -21,53 +31,50 @@
 
 #include "../include/leptonpru_int.h"
 
-#define STATE_STOP        0
-#define STATE_RUN         1
-#define STATE_WAIT_1PPS   2
+// http://vabi-robotics.blogspot.com/2013/10/register-access-to-gpios-of-beaglebone.html
+#define OE_ADDR         0x134
+#define GPIO_DATAOUT    0x13C
+#define GPIO_DATAIN     0x138
+#define GPIO0_ADDR      0x44E07000
+#define GPIO1_ADDR      0x4804C000
+#define GPIO2_ADDR      0x481AC000
+#define GPIO3_ADDR      0x481AF000
 
-/* from https://gist.github.com/shirriff/2a7cf2f1adb37011da827f1c7f47b992 */
-// PRU Interrupt control registers
-#define PRU_INTC 0x00020000 // Start of PRU INTC registers TRM 4.3.1.2
-#define PRU_INTC_GER ((volatile uint32_t *)(PRU_INTC + 0x10)) // Global Interrupt Enable, TRM 4.5.3.3
-#define PRU_INTC_SICR ((volatile uint32_t *)(PRU_INTC + 0x24)) // Interrupt, TRM 4.5.3.6
-#define PRU_INTC_GPIR ((volatile uint32_t *)(PRU_INTC + 0x80)) // Interrupt, TRM 4.5.3.11
+// SPI CS pin (P9_17 on BBB)
+#define GPIO0_5         5
+// SPI SCLK pin (P9_22)
+#define GPIO0_2         2
+// SPI D1/MOSI pin (P9_18)
+#define GPIO0_4         4
 
-// PRU ECAP control registers (i.e. PWM used as a timer)
-#define ECAP 0x00030000 // ECAP0 offset, TRM 4.3.1.2
-// Using APWM mode (TRM 15.3.2.1) to get timer (TRM 15.3.3.5.1)
-#define ECAP_TSCTR ((volatile uint32_t *)(ECAP + 0x00)) // 32-bit counter register, TRM 15.3.4.1.1
-#define ECAP_APRD ((volatile uint32_t *)(ECAP + 0x10)) // Period shadow, TRM 15.3.4.1.5, aka CAP3
-#define ECAP_ECCTL2 ((volatile uint32_t *)(ECAP + 0x2a)) // Control 2, TRM 15.3.4.1.8
-#define ECAP_ECEINT ((volatile uint16_t *)(ECAP + 0x2c)) // Enable interrupt, TRM 15.3.4.1.9
-#define ECAP_ECCLR ((volatile uint16_t *)(ECAP + 0x30)) // Clear flags, TRM 15.3.4.1.11
+#define STATE_STOP              0
+#define STATE_WAIT_CS_LOW       1
+#define STATE_WAIT_CLK_HIGH     2
+#define STATE_WAIT_CLK_LOW      3
+#define STATE_WAIT_FRAME        4
 
-// Forward definitions
-static void init_pwm();
-static void wait_for_pwm_timer();
+#define GET_FRAME() { \
+        leptonpru_mmap *mmap_buf = (leptonpru_mmap *) (cxt.list_head[LIST_COUNTER_PSY(cxt.list_start)].dma_start_addr); \
+        buffer_ptr = mmap_buf->image; \
+        samples_count = 0; \
+    }
+
+#define GET_BYTE() { \
+        cur_byte = buffer_ptr[samples_count]; \
+        cur_bit = 0; \
+    }
 
 /* PRU/ARM shared memory */
 struct capture_context volatile cxt __attribute__((location(0))) = {0};
 
 static uint8_t state_run;
 
-static uint8_t gps_100hz_trigger;
-static uint8_t pin_gps_100hz_mask;
-
-static uint16_t samples_count;
-static leptonpru_mmap *mmap_buf;
+static uint8_t cur_byte,cur_bit;
+static uint32_t samples_count;
 static uint8_t *buffer_ptr;
 
-static uint64_t curr_time;    // start time in nanosecs from EPOCH
-
 static void init_start(void) {
-    cxt.frames_received = cxt.frames_dropped = 0;
-    cxt.list_start = cxt.list_end = 0;
-    samples_count = 0;
-    mmap_buf = (leptonpru_mmap *)(cxt.list_head[LIST_COUNTER_PSY(0)].dma_start_addr);
-    buffer_ptr = mmap_buf->image;
-    mmap_buf->start_time = curr_time;
-    mmap_buf->sample_rate = DELAY_NS;
-    mmap_buf->frame_number = cxt.frames_received;
+    cxt.frames_received = cxt.frames_dropped = cxt.unexpected_cs = 0;
 }
 
 static void init_stop(void) {
@@ -90,9 +97,8 @@ static int handle_command(uint32_t cmd) {
             state_run = STATE_STOP;
             return 0;
         case CMD_START:
-            pin_gps_100hz_mask = (1 << cxt.pin_gps_100hz);
-            gps_100hz_trigger = __R31 & pin_gps_100hz_mask;
-            state_run = STATE_WAIT_1PPS;
+            init_start();
+            state_run = STATE_WAIT_FRAME;
             return 0;
     }
     return -1;
@@ -100,6 +106,8 @@ static int handle_command(uint32_t cmd) {
 
 void main()
 {
+    uint8_t spi_cs, spi_clk;
+
     /* Enable OCP Master Port */
     CT_CFG.SYSCFG_bit.STANDBY_INIT = 0;
     cxt.magic = FW_MAGIC;
@@ -110,97 +118,88 @@ void main()
     // stopped state
     state_run = STATE_STOP;
 
-//    handle_command(CMD_CONFIGURE);
+    volatile uint32_t *gpio0 = (uint32_t *)GPIO0_ADDR;
 
-    uint8_t packet;
-
-    uint8_t gps_100hz_trigger_new;
-
-    init_pwm();
+    // set MISO pin for output and CS,CLK for input
+    gpio0[OE_ADDR/4] |= (1 << GPIO0_5) | (1 << GPIO0_2);
+    gpio0[OE_ADDR/4] &= 0xFFFFFFFF ^ (1 << GPIO0_4);
 
     while (1) {
 
-        if (state_run == STATE_WAIT_1PPS) {
-            if (cxt.cmd != 0) {
-                cxt.resp = handle_command(cxt.cmd);
-                cxt.cmd = 0;
-            }
-            if (cxt.state_run != state_run) {
-                cxt.state_run = state_run;
-            }
-            // wait for raising edge of 1PPS
-            gps_100hz_trigger_new = (uint8_t)(__R31 & pin_gps_100hz_mask);
-            if (gps_100hz_trigger^gps_100hz_trigger_new) {
-                if(gps_100hz_trigger_new) {
-                    // 1PPS starts on next second
-                    curr_time = (cxt.start_time / NANOSECONDS + 1) * NANOSECONDS;
-                    init_start();
-                    state_run = STATE_RUN;
-                    continue;
-                }
-                gps_100hz_trigger = gps_100hz_trigger_new;
+        if(cxt.cmd != 0) {
+            handle_command(cxt.cmd);
+            cxt.cmd = 0;
+        }
+        if(cxt.state_run != state_run)
+            cxt.state_run = state_run;
+
+        // wait till we get input frame
+        if (state_run == STATE_WAIT_FRAME) {
+            if (!LIST_IS_EMPTY(cxt.list_start, cxt.list_end)) {
+                GET_FRAME()
+                GET_BYTE()
+                state_run = STATE_WAIT_CS_LOW;
             }
             continue;
         }
-        // now states that work on timer
-        wait_for_pwm_timer();
-        // get PRU0-7 pins
-        packet = __R31 & 0xFF;
 
-        curr_time += DELAY_NS;
+        // get CS and CLK pins via GPIO
+        spi_cs = gpio0[GPIO_DATAIN/4] & (1 << GPIO0_5);
+        spi_clk = gpio0[GPIO_DATAIN/4] & (1 << GPIO0_2);
 
-        if (state_run == STATE_RUN) {
-            if (samples_count >= BUFFER_SIZE) {
-                // if queue is full, let's re-write the last frame, to not stop the stream
-                if (LIST_IS_FULL(cxt.list_start, cxt.list_end)) {
-                    LIST_COUNTER_DEC(cxt.list_end);
-                    cxt.frames_dropped++;
-                }
-                LIST_COUNTER_INC(cxt.list_end);
-                cxt.frames_received++;
-
-                samples_count = 0;
-                mmap_buf = (leptonpru_mmap *) (cxt.list_head[LIST_COUNTER_PSY(cxt.list_end)].dma_start_addr);
-                buffer_ptr = mmap_buf->image;
-                mmap_buf->start_time = curr_time;
-                mmap_buf->sample_rate = DELAY_NS;
-                mmap_buf->frame_number = cxt.frames_received;
-
-                /* Signal frame completion */
-                SIGNAL_EVENT(SYSEV_PRU0_TO_ARM_A);
-
+        if (state_run == STATE_WAIT_CS_LOW) {
+            if (spi_cs == 0) {
+                state_run = STATE_WAIT_CLK_LOW;
             }
-            *buffer_ptr++ = packet;
-            samples_count++;
+            continue;
         }
+        if (state_run == STATE_WAIT_CLK_LOW) {
+            if (spi_cs) {
+                cxt.unexpected_cs++;
+                state_run = STATE_WAIT_CS_LOW;
+                continue;
+            }
+            if (spi_clk == 0) {
+                state_run = STATE_WAIT_CLK_HIGH;
+            }
+            continue;
+        }
+        if (state_run == STATE_WAIT_CLK_HIGH) {
+            if (spi_cs) {
+                state_run = STATE_WAIT_CS_LOW;
+                continue;
+            }
+            if (spi_clk) {
+                if (cur_byte & (1 << cur_bit)) {
+                    gpio0[GPIO_DATAOUT/4] |= (1 << GPIO0_4);
+                }
+                else {
+                    gpio0[GPIO_DATAOUT/4] &= 0xFFFFFFFF ^ (1 << GPIO0_4);
+                }
+                cur_bit++;
+                if (cur_bit >= 8) {
+                    samples_count++;
+                    cxt.debug = samples_count;
+                    if (samples_count >= BUFFER_SIZE) {
+                        cxt.frames_received++;
+                        LIST_COUNTER_INC(cxt.list_start);
+                        if (LIST_IS_EMPTY(cxt.list_start, cxt.list_end)) {
+                            // empty queue must not happen, counted as an error
+                            cxt.frames_dropped++;
+                            state_run = STATE_WAIT_FRAME;
+                        }
+                        GET_FRAME()
+
+                        // Signal frame completion
+                        SIGNAL_EVENT(SYSEV_PRU0_TO_ARM_A);
+                    }
+                    GET_BYTE()
+                }
+                state_run = STATE_WAIT_CLK_LOW;
+            }
+            continue;
+        }
+
     }
 }
 
-// Initializes the PWM timer, used to control output transitions.
-// Every DELAY_NS nanoseconds, interrupt 15 will fire
-inline void init_pwm() {
-    *PRU_INTC_GER = 1; // Enable global interrupts
-    *ECAP_APRD = DELAY_NS / 5 - 1; // Set the period in cycles of 5 ns
-    *ECAP_ECCTL2 = (1 << 9) /* APWM */ | (1 << 4) /* counting */;
-    *ECAP_TSCTR = 0; // Clear counter
-    *ECAP_ECEINT = 0x80; // Enable compare equal interrupt
-    *ECAP_ECCLR = 0xff; // Clear interrupt flags
-}
-
-// Wait for the PWM timer to fire.
-// see TRM 15.2.4.26
-inline void wait_for_pwm_timer() {
-    // Wait for timer compare interrupt
-    while (!(__R31 & (1 << 30))) {
-        /* Process received command */
-        if (cxt.cmd != 0) {
-            cxt.resp = handle_command(cxt.cmd);
-            cxt.cmd = 0;
-        }
-        if (cxt.state_run != state_run) {
-            cxt.state_run = state_run;
-        }
-    }
-    *PRU_INTC_SICR = 15; // Clear interrupt
-    *ECAP_ECCLR = 0xff;     // Clear interrupt flags
-}

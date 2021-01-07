@@ -56,27 +56,19 @@ struct buflist {
 
 /* Shared structure containing PRU attributes */
 struct capture_context {
-    uint64_t start_time;    // start time in nanosecs from EPOCH
-
     /* Magic bytes */
     uint32_t magic;         // Magic bytes, should be FW_MAGIC
 
     uint32_t cmd;           // Command from Linux host to us
-
     int32_t resp;           // Response code
 
-//    uint32_t sample_rate;   // nano seconds
-//    uint32_t max_frames;    // frames to capture, 0 to infinite
-    uint32_t pin_gps_100hz; // GPS 100 Hz pin in R31
-
-//    uint32_t flags;
-
-    uint32_t frames_dropped;
+    uint32_t frames_dropped;    // frame buffer under run (empty) cases
     uint32_t frames_received;
+    uint32_t unexpected_cs;     // unexpected high CS
 
     uint32_t state_run;
 
-    uint32_t debug,debug1;
+    uint32_t debug;
 
     uint32_t list_start, list_end;    // start end end of frames queue in list_head
 

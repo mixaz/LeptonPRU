@@ -16,6 +16,6 @@ popd
 cp $2 /work/linux-stable-rcn-ee/.config
 
 cd /work/linux-stable-rcn-ee
-make -j3 ARCH=arm CROSS_COMPILE=$CROSS_ROOT/bin/$CROSS_TRIPLE-
+make -j8 ARCH=arm CROSS_COMPILE=$CROSS_ROOT/bin/$CROSS_TRIPLE-
 
 

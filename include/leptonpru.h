@@ -31,9 +31,6 @@
  * mmap buffer structure
  */
 typedef struct _leptonpru_mmap {
-    uint64_t start_time;
-    uint32_t sample_rate;
-    uint32_t frame_number;
     uint8_t image[BUFFER_SIZE];
 } leptonpru_mmap;
 

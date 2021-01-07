@@ -38,7 +38,7 @@ int LeptonPru_init(LeptonPruContext *ctx, int fd) {
 	
     for(i=0; i<FRAMES_NUMBER; i++) {
         off = ((i*frame_size+psize-1)/psize) * psize;
-        mm = (leptonpru_mmap*)mmap(NULL, frame_size, PROT_READ, MAP_SHARED, fd, off);
+        mm = (leptonpru_mmap*)mmap(NULL, frame_size, PROT_WRITE, MAP_SHARED, fd, off);
         if (mm == MAP_FAILED) {
             perror("LeptonPru_init: mmap");
             err = -1;
@@ -63,19 +63,19 @@ int LeptonPru_release(LeptonPruContext *ctx) {
     int err = 0;
 
     for(i=0; i<FRAMES_NUMBER; i++) {
-	if (ctx->frame_buffers[i] != NULL) {
-	    if ((err=munmap(ctx->frame_buffers[i], frame_size))) {
-		perror("LeptonPru_release: munmap");
-		ctx->err = err;
-	    }
-	    ctx->frame_buffers[i] = NULL;
+        if (ctx->frame_buffers[i] != NULL) {
+            if ((err=munmap(ctx->frame_buffers[i], frame_size))) {
+                perror("LeptonPru_release: munmap");
+                ctx->err = err;
+            }
+            ctx->frame_buffers[i] = NULL;
         }
     }
     return err;
 }
 
 /*
- * Read next frame into ctx->curr_frame. 
+ * Read next frame into ctx->curr_frame.
  * Returns 0 (or blocks if file opened in blocking mode) if no buffer ready, 1 if new frame was read.
  * Otherwise negative error is returned.
  */
