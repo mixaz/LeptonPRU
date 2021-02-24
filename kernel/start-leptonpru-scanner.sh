@@ -1,5 +1,5 @@
 #!/bin/bash
 
 cd /home/debian
-insmod ./sampler
+insmod ./leptonpru.ko
 ./sampler
