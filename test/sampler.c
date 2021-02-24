@@ -39,11 +39,13 @@ static int write_event(int gpio_num, leptonpru_mmap *frame, int packet_num, int 
 
     // FIXME: correction should be calculated before all pins,
     // or it may be incorrect if PRU_PIN_1PPS != 0
-    if(correction != -1 && gpio_num == PRU_PIN_1PPS && event) {
-        // sync with 1PPS signal
-        correction = curr_time % NANOSECONDS;
+    if(correction != -1) {
+        if(gpio_num == PRU_PIN_1PPS && event) {
+            // sync with 1PPS signal
+            correction = curr_time % NANOSECONDS;
+        }
+        curr_time -= correction;
     }
-    curr_time -= correction;
 
     ts.tv_sec = curr_time / NANOSECONDS;
 
