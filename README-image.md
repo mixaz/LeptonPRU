@@ -41,8 +41,7 @@ We need to use image with kernel 4.14-ti, `leptonpru` kernel module is built aga
 enable_uboot_overlays=1
 uboot_overlay_pru=/lib/firmware/leptonpru-00A0.dtbo
 ```
-
-See `initd/uEnv.txt`
+See `initd/uEnv.txt` for example.
 
 `leptonpru-00A0.dtbo` is built along `leptonpru` kernel module, see LeptonPRU `README-build.md`, copy it to `/lib/firmware/`.
 
@@ -122,7 +121,6 @@ Also you need to copy `sampler` binary file to `/home/debian`. The `sampler` is 
 
 The same you need `leptonpru.ko` kernel module in `/home/debian`. PRU firmware files needs to be placed to `/lib/firmware/lepton-pru0-fw`  `/lib/firmware/lepton-pru1-fw`. See `README-build.md` how to build those binaries.
 
-
 ```
 $ sudo systemctl enable start-leptonpru-scanner
 ```
@@ -155,5 +153,4 @@ sudo dd if=/dev/sdb bs=512 count=7372800 of=./sd.img
 ```
 
 This command dumps 4Gb (the size of root partition in BBB debian distro) to file `sd.img`, and can be flashed to any other SD card, using tools like Etcher https://www.balena.io/etcher/.
-
 
