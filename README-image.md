@@ -6,7 +6,7 @@ This README describes how to prepare custom Debian image for Beaglebone Black wi
 
 The system needs to grab data from BBB pins and log events when signal is changed on the pins. The events need to be logged with time stamps. Since BBB isn't connected to network, it can't use NTP servers to correct system clock to world time. The clock is set from GPS receiver, using `gpsd` and `chrony` services.
 
-To grab pins signals PRU coprocessor is used, so the signals are taken at once, and sampling can't be distorted by main CPU Linux task scheduler. PRU0-7 pins are used for data sampling, and PRU0 is 1PPS signal, timestamps are corrected to it.
+To grab pins signals PRU coprocessor is used, to take signals at once, and sampling can't be distorted by main CPU Linux task scheduler. PRU0-7 pins are used for data sampling, and PRU0 is 1PPS signal, timestamps are corrected to it.
 
 PRU firmware samples data to buffers in RAM, which are shared to userland app by `leptonpru` kernel module. The data in buffers are raw, sampled with frequency of 10ms. The userland app watches for changes in the data, and logs them to file. It would be probably better to track changes on PRU side, so buffers won't be neceassary, and regular `rproc` API could be used instead to communicate the changes directly to userland app, without kernel module. Approach with kernel module and raw data was used for historical reason, it was specifiled in initial requirements.
 
@@ -41,7 +41,7 @@ We need to use image with kernel 4.14-ti, leptonpru kernel module is built again
 enable_uboot_overlays=1
 uboot_overlay_pru=/lib/firmware/leptonpru-00A0.dtbo
 ```
-`leptonpru-00A0.dtbo` is built along `leptonpru` kernel module, see LeptonPRU README, copy it to `/lib/firmware/`.
+`leptonpru-00A0.dtbo` is built along `leptonpru` kernel module, see LeptonPRU `README-build.md`, copy it to `/lib/firmware/`.
 
 ### Service for GPIO modes setup
 
@@ -115,13 +115,33 @@ It enables `chrony-wait` service on bootup.
 
 Copy `initd/start-leptonpru-scanner.service` to `/etc/systemd/system/multi-user.target.wants/` and `initd/start-leptonpru-scanner.sh` to `/home/debian`.
 
-Also you need to copy `sampler` binary file to `/home/debian`
+Also you need to copy `sampler` binary file to `/home/debian`. The `sampler` is built in `test` folder, see `README-build.md`.
+
+The same you need `leptonpru.ko` kernel module in `/home/debian`. PRU firmware files needs to be placed to `/lib/firmware/lepton-pru0-fw`  `/lib/firmware/lepton-pru1-fw`. See `README-build.md` how to build that binaries.
+
 
 ```
 $ sudo systemctl enable start-leptonpru-scanner
 ```
 
 It enables `start-leptonpru-scanner` service on bootup.
+
+## Testing
+
+Reboot BBB and check status of services:
+
+```
+$ systemctl status gpsd chrony enable-leptonpru-pins chrony-wait.service start-leptonpru-scanner
+```
+
+You may need to check logs of the services, to make sure they do not have errors, for example:
+
+```
+$ journalctl -u gpsd
+```
+
+For troubleshoting `gpsd` and `chrony` check manuals of those tools.
+
 
 ## Make image from SD card
 
@@ -132,6 +152,5 @@ sudo dd if=/dev/sdb bs=512 count=7372800 of=./sd.img
 ```
 
 This command dumps 4Gb (the size of root partition in BBB debian distro) to file `sd.img`, and can be flashed to any other SD card, using tools like Etcher https://www.balena.io/etcher/.
-
 
 
