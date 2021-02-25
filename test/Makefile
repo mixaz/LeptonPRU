@@ -10,11 +10,8 @@
 
 all: sampler
 
-leptonpru-test: leptonpru-test.c ../library/libleptonpru.a
-	$(CC) -o leptonpru-test leptonpru-test.c ../library/libleptonpru.a -I../include
-
 sampler: sampler.c ../library/libleptonpru.a
 	$(CC) -o sampler sampler.c ../library/libleptonpru.a -I../include
 
 clean:
-	rm *.o leptonpru-test sampler
+	rm *.o sampler
